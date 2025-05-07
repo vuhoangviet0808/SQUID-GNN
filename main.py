@@ -96,9 +96,8 @@ def main(args):
         scheduler.step()
 
         print(f"Epoch {epoch:02d} | "
-              f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f}, F1: {f1_train:.4f} | "
-              f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.4f}, F1: {f1_test:.4f}")
-
+              f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
+              f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.4f}")
 
 if __name__ == "__main__":
     args = get_args()
