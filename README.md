@@ -13,10 +13,9 @@ pip install -r requirements.txt
 ```
 
 Key packages:
-- torch
-- torch-geometric
-- pennylane
-- argparse
+- torch==2.7.0
+- torch-geometric==2.6.1
+- pennylane==0.38.0
 
 ---
 
