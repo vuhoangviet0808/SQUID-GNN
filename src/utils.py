@@ -107,3 +107,41 @@ def get_predictions(model, loader):
         all_preds.append(preds.cpu())
         all_labels.append(data.y.cpu())
     return torch.cat(all_preds), torch.cat(all_labels)
+
+def train_node(model, optimizer, data, criterion, device):
+    model.train()
+    data = data.to(device)
+    optimizer.zero_grad()
+    out = model(data.x, data.edge_attr, data.edge_index.t(), batch=None)  # batch is unused
+    loss = criterion(out[data.train_mask], data.y[data.train_mask])
+    loss.backward()
+    optimizer.step()
+    return float(loss)
+
+@torch.no_grad()
+def test_node(model, data, criterion, device, num_classes=0):
+    model.eval()
+    data = data.to(device)
+    out = model(data.x, data.edge_attr, data.edge_index.t(), batch=None)
+
+    results = {}
+    for split in ['train', 'val', 'test']:
+        mask = getattr(data, f'{split}_mask')
+        loss = criterion(out[mask], data.y[mask])
+        pred = out[mask].argmax(dim=1)
+        correct = (pred == data.y[mask]).sum().item()
+        acc = correct / mask.sum().item()
+
+        f1 = 0
+        if num_classes:
+            f1_metric = MulticlassF1Score(num_classes=num_classes, average='macro').to(device)
+            f1 = f1_metric(pred, data.y[mask])
+
+        results[split] = {
+            'loss': float(loss),
+            'acc': acc,
+            'f1': f1,
+        }
+
+    return results
+

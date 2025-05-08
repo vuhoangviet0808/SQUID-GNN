@@ -1,12 +1,13 @@
 import torch
+import os
 from torch_geometric.datasets import TUDataset, Planetoid
 from torch_geometric.loader import DataLoader
 
-def load_dataset(name, path='data', train_size=None, test_size=None, batch_size=32):
+def load_dataset(name, path='../data', train_size=None, test_size=None, batch_size=32):
     name = name.upper()
     
     if name in ['MUTAG', 'ENZYMES', 'PROTEINS']:
-        dataset = TUDataset(root=f'{path}/TUDataset', name=name)
+        dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name)
         torch.manual_seed(1712)
         dataset = dataset.shuffle()
         if train_size and test_size:
@@ -19,7 +20,7 @@ def load_dataset(name, path='data', train_size=None, test_size=None, batch_size=
         test_loader = DataLoader(test_dataset, batch_size=batch_size)
         task_type = 'graph'
     elif name in ['CORA', 'CITESEER', 'PUBMED']:
-        dataset = Planetoid(root=f'{path}/Planetoid', name=name)
+        dataset = Planetoid(root=os.path.join(path, 'Planetoid'), name=name)
         data = dataset[0]  # only one graph
         train_loader = test_loader = data  # use the same for node-level
         task_type = 'node'
