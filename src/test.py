@@ -92,8 +92,8 @@ class HandcraftGNN(nn.Module):
             upd_layer = self.upds[f"lay{i+1}"]
             msg_layer = self.msgs[f"lay{i+1}"]
             
-            updates = [[] for _ in range(num_nodes)]  # each list holds candidate updates
-            
+            # updates = [[] for _ in range(num_nodes)]  # each list holds candidate updates
+            updates_node = node_features.clone() ## UPDATES
             for sub in subgraphs:
                 center = sub[0]
                 neighbors = sub[1:]
@@ -108,13 +108,15 @@ class HandcraftGNN(nn.Module):
                 aggr = torch.sum(all_msg, dim=0)   
                 
                 new_center  = upd_layer(torch.cat([node_features[center], aggr], dim=0))
-                updates[center].append(new_center)
+                # updates[center].append(new_center)
+                updates_node[center] = updates_node[center] + new_center  
+            node_features = F.relu(updates_node)
                 
-            updates_node = []
-            for update in updates:
-                updates_node.append(torch.stack(update))
+            # updates_node = []
+            # for update in updates:
+            #     updates_node.append(torch.stack(update))
                 
-            node_features = F.relu(torch.vstack(updates_node))
+            # node_features = F.relu(torch.vstack(updates_node))
 
         # node_features = F.relu(node_features)
         # node_features = self.final(node_features)
