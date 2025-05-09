@@ -15,6 +15,10 @@ from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
+result_dir = os.path.join('../results')
+os.makedirs(result_dir, exist_ok=True)
+
+
 def get_args():
     parser = argparse.ArgumentParser(description="Train QGNN on graph data")
     parser.add_argument('--dataset', type=str, default='MUTAG', help='Dataset name (e.g., MUTAG, ENZYMES, CORA)')
