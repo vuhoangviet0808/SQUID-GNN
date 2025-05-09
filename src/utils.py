@@ -1,7 +1,7 @@
 import torch
 import random
 from collections import defaultdict
-from torchmetrics.classification import MulticlassF1Score
+# from torchmetrics.classification import MulticlassF1Score
 
 
 def star_subgraph(adjacency_matrix, subgraph_size=4):
@@ -74,6 +74,8 @@ def test_graph(model, loader, criterion, device, num_classes=0):
     
     all_preds = []
     all_labels = []
+    f1 = 0
+    
     
     for data in loader:
         data = data.to(device)
@@ -85,13 +87,11 @@ def test_graph(model, loader, criterion, device, num_classes=0):
         
         all_preds.append(pred)
         all_labels.append(data.y)
-    if num_classes:   
-        all_preds = torch.cat(all_preds, dim=0)
-        all_labels = torch.cat(all_labels, dim=0)
-        f1_metric = MulticlassF1Score(num_classes=num_classes, average='macro').to(device)
-        f1 = f1_metric(all_preds, all_labels)
-    else:
-        f1 = 0
+    # if num_classes:   
+    #     all_preds = torch.cat(all_preds, dim=0)
+    #     all_labels = torch.cat(all_labels, dim=0)
+    #     f1_metric = MulticlassF1Score(num_classes=num_classes, average='macro').to(device)
+    #     f1 = f1_metric(all_preds, all_labels)
     acc = correct / len(loader.dataset)
     return total_loss / len(loader.dataset), acc, f1
 
@@ -132,15 +132,9 @@ def test_node(model, data, criterion, device, num_classes=0):
         correct = (pred == data.y[mask]).sum().item()
         acc = correct / mask.sum().item()
 
-        f1 = 0
-        if num_classes:
-            f1_metric = MulticlassF1Score(num_classes=num_classes, average='macro').to(device)
-            f1 = f1_metric(pred, data.y[mask])
-
         results[split] = {
             'loss': float(loss),
             'acc': acc,
-            'f1': f1,
         }
 
     return results
