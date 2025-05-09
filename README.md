@@ -23,7 +23,7 @@ Key packages:
 
 Run training with:
 ```bash
-python main.py --dataset MUTAG --train_size 100 --test_size 50 --node_qubit 3
+python main.py --task node --dataset CORA --model gin --graphlet_size 6 --num_gnn_layers 2 --epochs 500 --lr 0.001 --step_size 10 --gamma 0.9 --plot
 ```
 
 ### Parameters

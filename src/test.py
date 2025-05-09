@@ -54,6 +54,7 @@ class HandcraftGNN(nn.Module):
         ) 
         
     def forward(self, node_feat, edge_attr, edge_index, batch):
+        edge_index = edge_index.t()
         num_nodes = node_feat.size(0)
         num_nodes_model = self.graphlet_size
         num_edges_model = self.graphlet_size - 1
@@ -166,6 +167,7 @@ class HandcraftGNN_NodeClassification(nn.Module):
         ) 
         
     def forward(self, node_feat, edge_attr, edge_index, batch):
+        edge_index = edge_index.t()
         num_nodes = node_feat.size(0)
         num_nodes_model = self.graphlet_size
         num_edges_model = self.graphlet_size - 1

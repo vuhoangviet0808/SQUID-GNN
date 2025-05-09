@@ -9,7 +9,11 @@ from torch import nn, optim
 from utils import train_graph, test_graph
 from data import load_dataset
 from model import QGNNGraphClassifier
-from test import HandcraftGNN
+from test import HandcraftGNN, HandcraftGNN_NodeClassification
+
+from datetime import datetime
+timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="Train QGNN on graph data")
@@ -22,16 +26,20 @@ def get_args():
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.8)
     parser.add_argument('--node_qubit', type=int, default=3)
-    parser.add_argument('--num_qgnn_layers', type=int, default=2)
+    parser.add_argument('--num_gnn_layers', type=int, default=2)
     parser.add_argument('--num_ent_layers', type=int, default=2)
+    parser.add_argument('--task', type=str, default='graph', choices=['graph', 'node'], help='graph or node classification')
+
     
     # Debug options
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
     
     # For switching between models
-    parser.add_argument('--model', type=str, default='qgnn', choices=['qgnn', 'handcraft'])
+    parser.add_argument('--model', type=str, default='qgnn', 
+                        choices=['qgnn', 'handcraft', 'gin', 'gcn', 'gat'],
+                        help="Which model to run"
+                        )
     parser.add_argument('--graphlet_size', type=int, default=10)
-    parser.add_argument('--hop_neighbor', type=int, default=3)
     
     
     return parser.parse_args()
@@ -60,73 +68,104 @@ def main(args):
         batch_size=args.batch_size
     )
 
-    if task_type != 'graph':
-        raise NotImplementedError("Node classification support is not implemented yet.")
-
+    # if task_type != 'graph':
+    #     raise NotImplementedError("Node classification support is not implemented yet.")
+ 
     # Model metadata
-    node_input_dim = dataset[0].x.shape[1]
-    edge_input_dim = dataset[0].edge_attr.shape[1]
+    node_input_dim = dataset[0].x.shape[1] if dataset[0].x is not None else 0
+    edge_input_dim = dataset[0].edge_attr.shape[1] if dataset[0].edge_attr is not None else 0
     num_classes = dataset.num_classes
-
     # Model init
-    # model = QGNNGraphClassifier(
-    #     q_dev=q_dev,
-    #     w_shapes=w_shapes_dict,
-    #     node_input_dim=node_input_dim,
-    #     edge_input_dim=edge_input_dim,
-    #     graphlet_size=args.node_qubit,
-    #     hop_neighbor=args.num_qgnn_layers,
-    #     num_classes=num_classes,
-    #     one_hot=0
-    # )
-    
-    if args.model == 'qgnn':
-        model = QGNNGraphClassifier(
-            q_dev=q_dev,
-            w_shapes=w_shapes_dict,
-            node_input_dim=node_input_dim,
-            edge_input_dim=edge_input_dim,
-            graphlet_size=args.node_qubit,
-            hop_neighbor=args.num_qgnn_layers,
-            num_classes=num_classes,
-            one_hot=0
-        )
-    elif args.model == 'handcraft':
-        model = HandcraftGNN(
-            q_dev=q_dev,
-            w_shapes=w_shapes_dict,
-            node_input_dim=node_input_dim,
-            edge_input_dim=edge_input_dim,
-            graphlet_size=args.graphlet_size,
-            hop_neighbor=args.hop_neighbor,
-            num_classes=num_classes,
-            one_hot=0
-        )
+    if args.task == 'graph':
+        if args.model == 'qgnn':
+            model = QGNNGraphClassifier(
+                q_dev=q_dev,
+                w_shapes=w_shapes_dict,
+                node_input_dim=node_input_dim,
+                edge_input_dim=edge_input_dim,
+                graphlet_size=args.node_qubit,
+                hop_neighbor=args.num_gnn_layers,
+                num_classes=num_classes,
+                one_hot=0
+            )
+        elif args.model == 'handcraft':
+            model = HandcraftGNN(
+                q_dev=q_dev,
+                w_shapes=w_shapes_dict,
+                node_input_dim=node_input_dim,
+                edge_input_dim=edge_input_dim,
+                graphlet_size=args.graphlet_size,
+                hop_neighbor=args.num_gnn_layers,
+                num_classes=num_classes,
+                one_hot=0
+            )
+        else:
+            raise ValueError("Unknown model type: use 'qgnn' or 'handcraft'")
+    elif args.task == 'node':
+        data = dataset[0].to(device)
+        if args.model == 'handcraft':
+            model = HandcraftGNN_NodeClassification(
+                q_dev=q_dev,
+                w_shapes=w_shapes_dict,
+                node_input_dim=node_input_dim,
+                edge_input_dim=edge_input_dim,
+                graphlet_size=args.graphlet_size,
+                hop_neighbor=args.num_gnn_layers,
+                num_classes=num_classes,
+                one_hot=0
+            )
+        elif args.model == 'gin':
+            from baseline import GIN_Node
+            model = GIN_Node(
+                in_channels=node_input_dim,
+                hidden_channels=64,
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+            )
+        elif args.model == 'gcn':
+            from baseline import GCN_Node
+            model = GCN_Node(
+                in_channels=node_input_dim,
+                hidden_channels=64,
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+            )
+        elif args.model == 'gat':
+            from baseline import GAT_Node
+            model = GAT_Node(
+                in_channels=node_input_dim,
+                hidden_channels=8,    # heads * hidden
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+                heads=8,
+            )
+        else:
+            raise ValueError(f"Unsupported model for node task: {args.model}")
     else:
-        raise ValueError("Unknown model type: use 'qgnn' or 'handcraft'")
+        raise ValueError("Unsupported task type")
     
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     criterion = nn.CrossEntropyLoss()
-    
-    ##
-    print("=" * 50)
-    print(f"Training on dataset: {args.dataset.upper()}")
-    print(f"Node feature dimension: {node_input_dim}")
-    print(f"Edge feature dimension: {edge_input_dim}")
-    print(f"Number of classes: {num_classes}")
-    print(f"Number of training samples: {len(train_loader.dataset)}")
-    print(f"Number of testing samples: {len(test_loader.dataset)}")
-    print(f"QGNN layers: {args.num_qgnn_layers}")
-    print(f"Entangling layers per PQC: {args.num_ent_layers}")
-    print(f"Total qubits: {n_qubits} (Node qubits: {args.node_qubit}, Edge qubits: {edge_qubit})")
-    print(f"Epochs: {args.epochs}")
-    print(f"Batch size: {args.batch_size}")
-    print(f"Learning rate: {args.lr}")
-    print("=" * 50)
-    ##
+
+    ## Note: For debugging purposes, you can uncomment the following lines to print model details. 
+    # ##
+    # print("=" * 50)
+    # print(f"Training on dataset: {args.dataset.upper()}")
+    # print(f"Node feature dimension: {node_input_dim}")
+    # print(f"Edge feature dimension: {edge_input_dim}")
+    # print(f"Number of classes: {num_classes}")
+    # print(f"Number of training samples: {len(train_loader.dataset)}")
+    # print(f"Number of testing samples: {len(test_loader.dataset)}")
+    # print(f"QGNN layers: {args.num_gnn_layers}")
+    # print(f"Entangling layers per PQC: {args.num_ent_layers}")
+    # print(f"Total qubits: {n_qubits} (Node qubits: {args.node_qubit}, Edge qubits: {edge_qubit})")
+    # print(f"Epochs: {args.epochs}")
+    # print(f"Batch size: {args.batch_size}")
+    # print(f"Learning rate: {args.lr}")
+    # print("=" * 50)
 
     train_losses = []
     test_losses = []
@@ -135,20 +174,40 @@ def main(args):
 
     # Training loop
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
-    for epoch in range(1, args.epochs + 1):
-        train_graph(model, optimizer, train_loader, criterion, device)
-        train_loss, train_acc, f1_train = test_graph(model, train_loader, criterion, device, num_classes)
-        test_loss, test_acc, f1_test = test_graph(model, test_loader, criterion, device, num_classes)
-        scheduler.step()
-        
-        train_losses.append(train_loss)
-        test_losses.append(test_loss)
-        train_accs.append(train_acc)
-        test_accs.append(test_acc)
-        if epoch % step_plot == 0:
-            print(f"Epoch {epoch:02d} | "
-                f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
-                f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.4f}")
+    if args.task == 'graph':
+        for epoch in range(1, args.epochs + 1):
+            train_graph(model, optimizer, train_loader, criterion, device)
+            train_loss, train_acc, f1_train = test_graph(model, train_loader, criterion, device, num_classes)
+            test_loss, test_acc, f1_test = test_graph(model, test_loader, criterion, device, num_classes)
+            scheduler.step()
+            train_losses.append(train_loss)
+            test_losses.append(test_loss)
+            train_accs.append(train_acc)
+            test_accs.append(test_acc)
+            if epoch % step_plot == 0:
+                print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
+                    f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.4f}")
+    else:  # node task
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='min',                           
+            factor=args.gamma,      # Multiplies LR by this factor (e.g., 0.5)
+            patience=args.epochs//10,# Wait this many epochs without improvement
+            verbose=True                            # Print updates
+        )
+        from utils import train_node, test_node
+        for epoch in range(1, args.epochs + 1):
+            train_loss = train_node(model, optimizer, data, criterion, device)
+            test_metrics = test_node(model, data, criterion, device, num_classes)
+            train_losses.append(test_metrics['train']['loss'])
+            test_losses.append(test_metrics['test']['loss'])
+            train_accs.append(test_metrics['train']['acc'])
+            test_accs.append(test_metrics['test']['acc'])
+            scheduler.step(test_metrics['val']['loss'])
+            if epoch % step_plot == 0:
+                print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f} |" +
+                    f"Train Acc: {test_metrics['train']['acc']:.4f} | "
+                    f"Val Acc: {test_metrics['val']['acc']:.4f} | Test Acc: {test_metrics['test']['acc']:.4f}")
     
     
     if args.plot:
@@ -172,7 +231,8 @@ def main(args):
         plt.legend()
 
         plt.tight_layout()
-        plot_path = f"plot_{args.model}_{args.dataset.lower()}_{args.epochs}.png"
+        # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plot_path = f"plot_{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plt.savefig(os.path.join('../results', plot_path), dpi=300)
 
 if __name__ == "__main__":

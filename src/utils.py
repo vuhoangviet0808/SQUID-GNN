@@ -58,7 +58,7 @@ def train_graph(model, optimizer, loader, criterion, device):
     for data in loader:
         data = data.to(device)
         optimizer.zero_grad()
-        out = model(data.x, data.edge_attr, data.edge_index.t(), data.batch)
+        out = model(data.x, data.edge_attr, data.edge_index, data.batch)
         loss = criterion(out, data.y)
         loss.backward()
         optimizer.step()
@@ -77,7 +77,7 @@ def test_graph(model, loader, criterion, device, num_classes=0):
     
     for data in loader:
         data = data.to(device)
-        out = model(data.x, data.edge_attr, data.edge_index.t(), data.batch)
+        out = model(data.x, data.edge_attr, data.edge_index, data.batch)
         loss = criterion(out, data.y)
         total_loss += float(loss) * data.num_graphs
         pred = out.argmax(dim=1)
@@ -102,7 +102,7 @@ def get_predictions(model, loader):
     all_labels = []
     for data in loader:
         data = data.to(device)
-        out = model(data.x, data.edge_attr, data.edge_index.t(), data.batch)
+        out = model(data.x, data.edge_attr, data.edge_index, data.batch)
         preds = out.argmax(dim=1)
         all_preds.append(preds.cpu())
         all_labels.append(data.y.cpu())
@@ -112,7 +112,7 @@ def train_node(model, optimizer, data, criterion, device):
     model.train()
     data = data.to(device)
     optimizer.zero_grad()
-    out = model(data.x, data.edge_attr, data.edge_index.t(), batch=None)  # batch is unused
+    out = model(data.x, data.edge_attr, data.edge_index, batch=None)  # batch is unused
     loss = criterion(out[data.train_mask], data.y[data.train_mask])
     loss.backward()
     optimizer.step()
@@ -122,7 +122,7 @@ def train_node(model, optimizer, data, criterion, device):
 def test_node(model, data, criterion, device, num_classes=0):
     model.eval()
     data = data.to(device)
-    out = model(data.x, data.edge_attr, data.edge_index.t(), batch=None)
+    out = model(data.x, data.edge_attr, data.edge_index, batch=None)
 
     results = {}
     for split in ['train', 'val', 'test']:
