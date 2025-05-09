@@ -32,6 +32,7 @@ def get_args():
     parser.add_argument('--node_qubit', type=int, default=3)
     parser.add_argument('--num_gnn_layers', type=int, default=2)
     parser.add_argument('--num_ent_layers', type=int, default=2)
+    parser.add_argument('--hidden_channels', type=int, default=32)
     parser.add_argument('--task', type=str, default='graph', choices=['graph', 'node'], help='graph or node classification')
 
     
@@ -103,6 +104,14 @@ def main(args):
                 num_classes=num_classes,
                 one_hot=0
             )
+        elif args.model == 'gin':
+            from baseline import GIN_Graph
+            model = GIN_Graph(
+                in_channels=node_input_dim,
+                hidden_channels=args.hidden_channels,
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+            )
         else:
             raise ValueError("Unknown model type: use 'qgnn' or 'handcraft'")
     elif args.task == 'node':
@@ -122,7 +131,7 @@ def main(args):
             from baseline import GIN_Node
             model = GIN_Node(
                 in_channels=node_input_dim,
-                hidden_channels=64,
+                hidden_channels=args.hidden_channels,
                 out_channels=num_classes,
                 num_layers=args.num_gnn_layers,
             )
@@ -130,7 +139,7 @@ def main(args):
             from baseline import GCN_Node
             model = GCN_Node(
                 in_channels=node_input_dim,
-                hidden_channels=64,
+                hidden_channels=args.hidden_channels,
                 out_channels=num_classes,
                 num_layers=args.num_gnn_layers,
             )
@@ -197,7 +206,7 @@ def main(args):
             mode='min',                           
             factor=args.gamma,      # Multiplies LR by this factor (e.g., 0.5)
             patience=args.epochs//10,# Wait this many epochs without improvement
-            verbose=True                            # Print updates
+            # verbose=True                            # Print updates
         )
         from utils import train_node, test_node
         for epoch in range(1, args.epochs + 1):

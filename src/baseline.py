@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GINConv, GCNConv, GATConv, MLP
+from torch_geometric.nn import GINConv, GCNConv, GATConv, MLP, global_add_pool
 
 class GIN_Node(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
@@ -18,6 +18,25 @@ class GIN_Node(nn.Module):
         for conv in self.convs:
             x = F.relu(conv(x, edge_index))
             x = self.dropout(x)
+        return self.classifier(x)
+    
+
+class GIN_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            mlp = MLP([in_channels if i==0 else hidden_channels,
+                       hidden_channels, hidden_channels])
+            self.convs.append(GINConv(nn=mlp, train_eps=False))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
         return self.classifier(x)
 
 
