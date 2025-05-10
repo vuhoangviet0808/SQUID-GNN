@@ -9,11 +9,15 @@ from utils import star_subgraph
 
 
 def message_passing_pqc(strong, twodesign, inits, wires):
-    edge, center, neighbor = wires
+    edge, center, neighbor, ancilla = wires
     ##
-    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, center, neighbor])
+    # qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, center, neighbor])
     ##
-    # qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor])
+    # qml.CRX(phi=inits[0,0],wires=[center, edge])
+    # qml.CRX(phi=inits[0,1],wires=[center, neighbor])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, ancilla])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[neighbor, ancilla])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[center, ancilla])
     # qml.StronglyEntanglingLayers(weights=strong[1], wires=[edge, center])
     # qml.StronglyEntanglingLayers(weights=strong[2], wires=[center, neighbor])
 
@@ -56,8 +60,9 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits):
         qml.RZ(spreadlayer[1,num_edges_qbit+i], wires=[num_edges_qbit+i])
     
     for i in range(num_edges):
-        message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, wires=[i, num_edges_qbit, num_edges_qbit+i+1])
-    probs = qml.probs(wires=list(range(num_edges_qbit+1, num_edges_qbit + num_nodes)))
+        message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, wires=[i, num_edges_qbit, num_edges_qbit+i+1, num_qbit])
+    # probs = qml.probs(wires=list(range(num_edges_qbit+1, num_edges_qbit + num_nodes)))
+    probs = qml.probs(wires=num_qbit)
     
     return probs
 
@@ -90,8 +95,19 @@ class QGNNGraphClassifier(nn.Module):
             self.edge_input_dim = edge_input_dim if edge_input_dim > 0 else 1
 
         
-        self.input_node = nn.Linear(in_features=self.node_input_dim, out_features=self.final_dim)
-        self.input_edge = nn.Linear(in_features=self.edge_input_dim, out_features=self.pqc_dim)
+        # self.input_node = nn.Linear(in_features=self.node_input_dim, out_features=self.final_dim)
+        # self.input_edge = nn.Linear(in_features=self.edge_input_dim, out_features=self.pqc_dim)
+        self.input_node = nn.Sequential(
+            nn.Linear(self.node_input_dim, self.final_dim),
+            nn.ReLU(),              
+            nn.Sigmoid()            
+        )
+
+        self.input_edge = nn.Sequential(
+            nn.Linear(self.edge_input_dim, self.pqc_dim),
+            nn.ReLU(),
+            nn.Sigmoid()
+        )
         
         for i in range(self.hop_neighbor):
             qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")

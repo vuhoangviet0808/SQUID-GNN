@@ -12,6 +12,9 @@ from model import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
 
 from datetime import datetime
+import time
+
+
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
@@ -55,13 +58,13 @@ def main(args):
     edge_qubit = args.node_qubit - 1
     n_qubits = args.node_qubit + edge_qubit
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    q_dev = qml.device("default.qubit", wires=n_qubits)
+    q_dev = qml.device("default.qubit", wires=n_qubits + 1)
 
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (2, n_qubits, 1),
-        'strong': (1, args.num_ent_layers, 3, 3), # 3
-        # 'strong': (3, args.num_ent_layers, 2, 3), # 2
+        # 'strong': (1, args.num_ent_layers, 3, 3), # 3
+        'strong': (3, args.num_ent_layers, 2, 3), # 2
         'inits': (0, 2),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
@@ -188,6 +191,7 @@ def main(args):
     test_accs = []
 
     # Training loop
+    start = time.time()
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
     if args.task == 'graph':
         for epoch in range(1, args.epochs + 1):
@@ -223,8 +227,8 @@ def main(args):
                 print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f} |" +
                     f"Train Acc: {test_metrics['train']['acc']:.4f} | "
                     f"Val Acc: {test_metrics['val']['acc']:.4f} | Test Acc: {test_metrics['test']['acc']:.4f}")
-    
-    
+    end = time.time()
+    print(f"Total execution time: {end - start:.6f} seconds")
     if args.plot:
         epochs_range = range(1, args.epochs + 1)
 
