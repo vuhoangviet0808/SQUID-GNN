@@ -23,7 +23,9 @@ Key packages:
 
 Run training with:
 ```bash
-python main.py --task node --dataset CORA --model handcraft --graphlet_size 6 --num_gnn_layers 4 --epochs 500 --lr 0.05 --step_size 10 --gamma 0.9 --plot
+!python main.py --task graph --dataset MUTAG --plot \
+--model handcraft --num_gnn_layers 3 --hidden_channels 64\
+--epochs 50 --lr 0.001 --step_size 10 --gamma 0.9 
 ```
 
 ### Parameters
