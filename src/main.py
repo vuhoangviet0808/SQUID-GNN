@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument('--gamma', type=float, default=0.8)
     parser.add_argument('--node_qubit', type=int, default=3)
     parser.add_argument('--num_gnn_layers', type=int, default=2)
-    parser.add_argument('--num_ent_layers', type=int, default=2)
+    parser.add_argument('--num_ent_layers', type=int, default=1)
     parser.add_argument('--hidden_channels', type=int, default=32)
     parser.add_argument('--task', type=str, default='graph', choices=['graph', 'node'], help='graph or node classification')
 
@@ -60,7 +60,8 @@ def main(args):
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (2, n_qubits, 1),
-        'strong': (1, args.num_ent_layers, 3, 3),
+        'strong': (1, args.num_ent_layers, 3, 3), # 3
+        # 'strong': (3, args.num_ent_layers, 2, 3), # 2
         'inits': (0, 2),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
