@@ -62,10 +62,11 @@ def main(args):
 
     # PQC weight shape settings
     w_shapes_dict = {
-        'spreadlayer': (2, n_qubits, 1),
-        # 'strong': (1, args.num_ent_layers, 3, 3), # 3
-        'strong': (3, args.num_ent_layers, 2, 3), # 2
-        'inits': (0, 2),
+        'spreadlayer': (0, n_qubits, 1),
+        'strong': (1, args.num_ent_layers, 3, 3), # 3
+        # 'strong': (3, args.num_ent_layers, 2, 3), # 2
+        'inits': (1, 3),
+        'update': (1, args.num_ent_layers, 2, 3), # 2
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
 
