@@ -79,18 +79,19 @@ class QGNNGraphClassifier(nn.Module):
     def __init__(self, q_dev, w_shapes, node_input_dim=1, edge_input_dim=1,
                  graphlet_size=4, hop_neighbor=1, num_classes=2, one_hot=0):
         super().__init__()
-        self.hidden_dim = 64
+        self.hidden_dim = 128
         self.graphlet_size = graphlet_size
         self.one_hot = one_hot
         self.hop_neighbor = hop_neighbor
         self.pqc_dim = 3 # number of feat per pqc for each node
-        self.chunk = 2
+        self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
         self.pqc_out = 2 # probs?
         
         self.qconvs = nn.ModuleDict()
         self.upds = nn.ModuleDict()
         self.aggs = nn.ModuleDict()
+        self.norms = nn.ModuleDict()
         
         if self.one_hot:
             self.node_input_dim = 1
@@ -100,29 +101,17 @@ class QGNNGraphClassifier(nn.Module):
             self.edge_input_dim = edge_input_dim if edge_input_dim > 0 else 1
 
         
-        # self.input_node = nn.Linear(in_features=self.node_input_dim, out_features=self.final_dim)
-        # self.input_edge = nn.Linear(in_features=self.edge_input_dim, out_features=self.pqc_dim)
         self.input_node = MLP(
                     [self.node_input_dim, self.hidden_dim, self.final_dim],
                     act='leaky_relu', 
                     norm=None, dropout=0.2
             )
-        # nn.Sequential(
-        #     nn.Linear(self.node_input_dim, self.final_dim),
-        #     nn.ReLU(),              
-        #     nn.Sigmoid()            
-        # )
 
         self.input_edge = MLP(
                     [self.edge_input_dim, self.hidden_dim, self.pqc_dim],
                     act='leaky_relu', 
                     norm=None, dropout=0.2
             )
-        # nn.Sequential(
-        #     nn.Linear(self.edge_input_dim, self.pqc_dim),
-        #     nn.ReLU(),
-        #     nn.Sigmoid()
-        # )
         
         for i in range(self.hop_neighbor):
             qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
@@ -133,6 +122,8 @@ class QGNNGraphClassifier(nn.Module):
                     act='leaky_relu', 
                     norm=None, dropout=0.2
             )
+            
+            self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
             
         self.graph_head = MLP(
                 [self.final_dim, num_classes, num_classes],
@@ -165,14 +156,13 @@ class QGNNGraphClassifier(nn.Module):
         adj_mtx[edge_index[:, 0], edge_index[:, 1]] = 1
         adj_mtx[edge_index[:, 1], edge_index[:, 0]] = 1
         
-        subgraphs = star_subgraph(adj_mtx.cpu().numpy(), subgraph_size=self.graphlet_size)
-        
-        
         
         for i in range(self.hop_neighbor):
+            subgraphs = star_subgraph(adj_mtx.cpu().numpy(), subgraph_size=self.graphlet_size)
             node_upd = torch.zeros((num_nodes, self.final_dim), device=node_features.device)
             q_layer = self.qconvs[f"lay{i+1}"]
             upd_layer = self.upds[f"lay{i+1}"]
+            norm_layer = self.norms[f"lay{i+1}"]
             # agg_layer = self.aggs[f"lay{i+1}"]
             
             # updates = [[] for _ in range(num_nodes)]
@@ -214,8 +204,8 @@ class QGNNGraphClassifier(nn.Module):
             #     # updates[center].append(new_center)
             #     updates_node[center] += update_vec  
             ## TODO: End original section 
-            node_features = F.relu(updates_node)
-                
+            updates_node = F.relu(updates_node)
+            node_features = norm_layer(updates_node + node_features)    
             # updates_node = []
             # for update in updates:
             #     updates_node.append(torch.stack(update))

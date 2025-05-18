@@ -13,12 +13,13 @@ class HandcraftGNN(nn.Module):
     def __init__(self, q_dev, w_shapes, node_input_dim=1, edge_input_dim=1,
                  graphlet_size=4, hop_neighbor=1, num_classes=2, one_hot=0):
         super().__init__()
-        self.pqc_dim = 1 # number of qubits for each node
-        self.hidden_dim = 64
+        self.pqc_dim = 3 # number of feat for each node
+        self.hidden_dim = 128
         self.graphlet_size = graphlet_size
         self.one_hot = one_hot
         self.hop_neighbor = hop_neighbor
-        self.final_dim = 2**self.pqc_dim
+        
+        self.msg_dim = 2
         
         self.upds = nn.ModuleDict()
         self.msgs = nn.ModuleDict()
@@ -29,26 +30,40 @@ class HandcraftGNN(nn.Module):
         self.edge_input_dim = edge_input_dim if edge_input_dim > 0 else 1
 
         
-        self.input_node = nn.Linear(in_features=self.node_input_dim, out_features=self.final_dim)
-        self.input_edge = nn.Linear(in_features=self.edge_input_dim, out_features=self.final_dim)
+        self.input_node = MLP(
+                    [self.node_input_dim, self.hidden_dim, self.pqc_dim],
+                    act=nn.LeakyReLU(0.1),
+                    norm=None, dropout=0.2
+            )
+        
+        self.input_edge = MLP(
+                    [self.edge_input_dim, self.hidden_dim, self.pqc_dim],
+                    act=nn.LeakyReLU(0.1),
+                    norm=None, dropout=0.2
+            )
+        
+        self.norms = nn.ModuleList([
+            nn.LayerNorm(self.pqc_dim) for _ in range(self.hop_neighbor)
+        ])
         
         for i in range(self.hop_neighbor):
             
             self.upds[f"lay{i+1}"] = MLP(
-                    [self.final_dim*2, self.hidden_dim, self.final_dim],
+                    [self.pqc_dim + self.msg_dim, self.hidden_dim, self.pqc_dim],
                     act=nn.LeakyReLU(0.1),
                     norm=None, dropout=0.2
             )
             
+            
             self.msgs[f"lay{i+1}"] = MLP(
-                    [self.final_dim*2, self.hidden_dim, self.final_dim],
+                    [self.pqc_dim*2, self.hidden_dim, self.msg_dim],
                     act=nn.LeakyReLU(0.1),
                     norm=None, dropout=0.2
             )
 
 
         self.graph_head = MLP(
-                [self.final_dim, self.hidden_dim, num_classes],
+                [self.pqc_dim, self.hidden_dim, num_classes],
                 act=nn.LeakyReLU(0.1), 
                 norm=None, dropout=0.2
         ) 
@@ -92,6 +107,8 @@ class HandcraftGNN(nn.Module):
             upd_layer = self.upds[f"lay{i+1}"]
             msg_layer = self.msgs[f"lay{i+1}"]
             
+            norm_layer = self.norms[i]
+            
             # updates = [[] for _ in range(num_nodes)]  # each list holds candidate updates
             updates_node = node_features.clone() ## UPDATES
             for sub in subgraphs:
@@ -110,16 +127,9 @@ class HandcraftGNN(nn.Module):
                 new_center  = upd_layer(torch.cat([node_features[center], aggr], dim=0))
                 # updates[center].append(new_center)
                 updates_node[center] = updates_node[center] + new_center  
-            node_features = F.relu(updates_node)
-                
-            # updates_node = []
-            # for update in updates:
-            #     updates_node.append(torch.stack(update))
-                
-            # node_features = F.relu(torch.vstack(updates_node))
+            updates_node = F.relu(updates_node)
+            node_features = norm_layer(updates_node + node_features)
 
-        # node_features = F.relu(node_features)
-        # node_features = self.final(node_features)
         graph_embedding = global_add_pool(node_features, batch)
         
         return self.graph_head(graph_embedding)
