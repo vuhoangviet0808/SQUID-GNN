@@ -29,7 +29,7 @@ def message_passing_pqc(strong, twodesign, inits, wires):
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
-    edge_feat_dim = feat_dim = node_feat_dim = 3
+    edge_feat_dim = feat_dim = node_feat_dim = 2
     inputs = inputs.reshape(-1,feat_dim)
     
     # The number of avaible nodes and edges
@@ -50,12 +50,12 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     for i in range(num_edges):
         qml.RY(adjacency_matrix[i][0], wires=i)
         qml.RZ(adjacency_matrix[i][1], wires=i)
-        qml.RX(adjacency_matrix[i][2], wires=i)
+        # qml.RX(adjacency_matrix[i][2], wires=i)
     
     for i in range(num_nodes):
         qml.RY(vertex_features[i][0], wires=center_wire+i)
         qml.RZ(vertex_features[i][1], wires=center_wire+i)
-        qml.RX(vertex_features[i][2], wires=center_wire+i)
+        # qml.RX(vertex_features[i][2], wires=center_wire+i)
     
     
     for i in range(num_edges):
@@ -83,7 +83,7 @@ class QGNNGraphClassifier(nn.Module):
         self.graphlet_size = graphlet_size
         self.one_hot = one_hot
         self.hop_neighbor = hop_neighbor
-        self.pqc_dim = 3 # number of feat per pqc for each node
+        self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
         self.pqc_out = 2 # probs?
@@ -146,6 +146,9 @@ class QGNNGraphClassifier(nn.Module):
         edge_features = self.input_edge(edge_features)
         node_features = self.input_node(node_features)
         
+        edge_features = torch.tanh(edge_features) * np.pi
+        node_features = torch.tanh(node_features) * np.pi
+        
         idx_dict = {
             (int(u), int(v)): i
             for i, (u, v) in enumerate(edge_index.tolist())
@@ -183,8 +186,13 @@ class QGNNGraphClassifier(nn.Module):
                     inputs = torch.cat([e_feat, n_feat[:,:,i]], dim=0)   
                     all_msg = q_layer(inputs.flatten()).reshape(-1,2)
                     aggr = torch.sum(all_msg, dim=0)
-                    update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
-                    updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] += update_vec 
+                    # print("aggr", aggr.shape)
+                    # update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
+                    update_vec = aggr
+                    update_vec = torch.tanh(update_vec) * np.pi
+                    # print("update_vec", update_vec.shape)
+                    updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] = (updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] + update_vec)/2 
+                    
             ## TODO: End test section 
             # for sub in subgraphs:
             #     center = sub[0]
@@ -204,7 +212,7 @@ class QGNNGraphClassifier(nn.Module):
             #     # updates[center].append(new_center)
             #     updates_node[center] += update_vec  
             ## TODO: End original section 
-            updates_node = F.relu(updates_node)
+            # updates_node = F.relu(updates_node)
             node_features = norm_layer(updates_node + node_features)    
             # updates_node = []
             # for update in updates:
