@@ -25,7 +25,7 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     qml.CRX(inits[0, 0], wires=[neighbor, ancilla])
     qml.CRY(inits[0, 1], wires=[edge, ancilla])
     qml.CRZ(inits[0, 2], wires=[neighbor, ancilla])
-    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla])
+    # qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla])
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
@@ -67,7 +67,7 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
         weights=update[0], 
         wires=[center_wire, num_qbit]
         )
-    probs = qml.probs(wires=center_wire)
+    probs = qml.probs(wires=[center_wire, num_qbit])
     return probs
 
 
@@ -86,7 +86,7 @@ class QGNNGraphClassifier(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 2 # probs?
+        self.pqc_out = 4 # probs?
         
         self.qconvs = nn.ModuleDict()
         self.upds = nn.ModuleDict()
@@ -185,12 +185,12 @@ class QGNNGraphClassifier(nn.Module):
                 for i in range(n_feat.shape[2]):
                     inputs = torch.cat([e_feat, n_feat[:,:,i]], dim=0)   
                     all_msg = q_layer(inputs.flatten()).reshape(-1,2)
-                    aggr = torch.sum(all_msg, dim=0)
-                    # print("aggr", aggr.shape)
-                    # update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
-                    update_vec = aggr
+                    # aggr = torch.sum(all_msg, dim=0)
+                    
+                    aggr = all_msg.flatten()
+                    update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
+                    # update_vec = aggr
                     update_vec = torch.tanh(update_vec) * np.pi
-                    # print("update_vec", update_vec.shape)
                     updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] = (updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] + update_vec)/2 
                     
             ## TODO: End test section 

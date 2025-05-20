@@ -63,9 +63,9 @@ def main(args):
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (0, n_qubits, 1),
-        'strong': (1, args.num_ent_layers, 3, 3), # 3
+        'strong': (0, args.num_ent_layers, 3, 3), # 3
         # 'strong': (3, args.num_ent_layers, 2, 3), # 2
-        'inits': (1, 3),
+        # 'inits': (1, 3),
         'update': (1, args.num_ent_layers, 2, 3), # 2
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
@@ -192,6 +192,13 @@ def main(args):
     test_accs = []
 
     # Training loop
+    string = "="*10 + f"{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}" + "="*10
+    with open("model_parameters.txt", "w") as f_param:
+        
+        f_param.write(string + "\n")
+    with open("model_gradients.txt", "w") as f_grad:
+        f_param.write(string + "\n")
+        
     start = time.time()
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
     if args.task == 'graph':
@@ -204,6 +211,24 @@ def main(args):
             test_losses.append(test_loss)
             train_accs.append(train_acc)
             test_accs.append(test_acc)
+            ############
+            # === Write model parameters to file ===
+            with open("model_parameters.txt", "a") as f_param:
+                f_param.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
+                for name, param in model.named_parameters():
+                    f_param.write(f"{name}:\n{param.data.cpu().numpy()}\n\n")
+
+            # === Write gradients to separate file ===
+            with open("model_gradients.txt", "a") as f_grad:
+                f_grad.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
+                for name, param in model.named_parameters():
+                    if param.requires_grad:
+                        if param.grad is None:
+                            f_grad.write(f"{name}: No gradient (None)\n")
+                        else:
+                            grad = param.grad.cpu().numpy()
+                            f_grad.write(f"{name}:\n{grad}\n\n")
+            ############
             if epoch % step_plot == 0:
                 print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
                     f"Test Loss: {test_loss:.4f}, Acc: {test_acc:.4f}")
