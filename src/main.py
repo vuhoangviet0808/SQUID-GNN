@@ -8,7 +8,7 @@ from torch import nn, optim
 
 from utils import train_graph, test_graph
 from data import load_dataset
-from model import QGNNGraphClassifier
+from model_test import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
 
 from datetime import datetime
@@ -58,15 +58,15 @@ def main(args):
     edge_qubit = args.node_qubit - 1
     n_qubits = args.node_qubit + edge_qubit
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    q_dev = qml.device("default.qubit", wires=n_qubits + 1)
+    q_dev = qml.device("default.qubit", wires=n_qubits + 2) # number of ancilla qubits
 
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (0, n_qubits, 1),
         'strong': (0, args.num_ent_layers, 3, 3), # 3
         # 'strong': (3, args.num_ent_layers, 2, 3), # 2
-        # 'inits': (1, 3),
-        'update': (1, args.num_ent_layers, 2, 3), # 2
+        'inits': (1, 4),
+        'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
 
@@ -194,10 +194,9 @@ def main(args):
     # Training loop
     string = "="*10 + f"{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}" + "="*10
     with open("model_parameters.txt", "w") as f_param:
-        
         f_param.write(string + "\n")
     with open("model_gradients.txt", "w") as f_grad:
-        f_param.write(string + "\n")
+        f_grad.write(string + "\n")
         
     start = time.time()
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
