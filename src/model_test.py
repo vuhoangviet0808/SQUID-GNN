@@ -27,9 +27,9 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
     qml.CRY(inits[0, 3], wires=[edge, ancilla2])
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1])
-    qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1]))
+    # qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1]))
     qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
-    qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2]))
+    # qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2]))
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
@@ -108,7 +108,8 @@ def identity_block_init(tensor):
         return tensor
     
 def input_process(tensor):
-    return torch.clamp(tensor, -1.0, 1.0) * np.pi
+    # return torch.clamp(tensor, -1.0, 1.0) * np.pi
+    return torch.tanh(tensor) * np.pi
 
 
 class QGNNGraphClassifier(nn.Module):
@@ -156,15 +157,16 @@ class QGNNGraphClassifier(nn.Module):
             
             self.upds[f"lay{i+1}"] = MLP(
                     [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
-                    act='tanh', 
+                    act='leaky_relu', 
                     norm=None, dropout=0.2
             )
             
             self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
+            break
             
         self.graph_head = MLP(
                 [self.final_dim, num_classes, num_classes],
-                act='tanh', 
+                act='leaky_relu', 
                 norm=None, dropout=0.5
         ) 
         
@@ -202,9 +204,9 @@ class QGNNGraphClassifier(nn.Module):
         for i in range(self.hop_neighbor):
             subgraphs = star_subgraph(adj_mtx.cpu().numpy(), subgraph_size=self.graphlet_size)
             node_upd = torch.zeros((num_nodes, self.final_dim), device=node_features.device)
-            q_layer = self.qconvs[f"lay{i+1}"]
-            upd_layer = self.upds[f"lay{i+1}"]
-            norm_layer = self.norms[f"lay{i+1}"]
+            q_layer = self.qconvs[f"lay{1}"] #i+1}"]
+            upd_layer = self.upds[f"lay{1}"] #i+1}"]
+            norm_layer = self.norms[f"lay{1}"] #i+1}"]
 
             updates_node = node_features.clone() 
             
