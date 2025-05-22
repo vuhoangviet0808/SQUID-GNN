@@ -20,6 +20,11 @@ timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 result_dir = os.path.join('../results')
 os.makedirs(result_dir, exist_ok=True)
+os.makedirs(os.path.join(result_dir, 'fig'), exist_ok=True)
+os.makedirs(os.path.join(result_dir, 'log'), exist_ok=True)
+
+param_file = os.path.join(result_dir, 'log', f"{timestamp}_model_parameters.txt")
+grad_file = os.path.join(result_dir, 'log', f"{timestamp}_model_gradients.txt")
 
 
 def get_args():
@@ -63,7 +68,7 @@ def main(args):
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (0, n_qubits, 1),
-        'strong': (0, args.num_ent_layers, 3, 3), # 3
+        'strong': (2, args.num_ent_layers, 3, 3), # 3
         # 'strong': (3, args.num_ent_layers, 2, 3), # 2
         'inits': (1, 4),
         'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
@@ -193,9 +198,9 @@ def main(args):
 
     # Training loop
     string = "="*10 + f"{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}" + "="*10
-    with open("model_parameters.txt", "w") as f_param:
+    with open(param_file, "w") as f_param:
         f_param.write(string + "\n")
-    with open("model_gradients.txt", "w") as f_grad:
+    with open(grad_file, "w") as f_grad:
         f_grad.write(string + "\n")
         
     start = time.time()
@@ -212,13 +217,13 @@ def main(args):
             test_accs.append(test_acc)
             ############
             # === Write model parameters to file ===
-            with open("model_parameters.txt", "a") as f_param:
+            with open(param_file, "a") as f_param:
                 f_param.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
                 for name, param in model.named_parameters():
                     f_param.write(f"{name}:\n{param.data.cpu().numpy()}\n\n")
 
             # === Write gradients to separate file ===
-            with open("model_gradients.txt", "a") as f_grad:
+            with open(grad_file, "a") as f_grad:
                 f_grad.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
                 for name, param in model.named_parameters():
                     if param.requires_grad:
@@ -277,7 +282,7 @@ def main(args):
         plt.tight_layout()
         # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plot_path = f"plot_{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-        plt.savefig(os.path.join('../results', plot_path), dpi=300)
+        plt.savefig(os.path.join('../results/fig', plot_path), dpi=300)
 
 if __name__ == "__main__":
     args = get_args()
