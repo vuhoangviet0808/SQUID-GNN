@@ -27,7 +27,9 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
     qml.CRY(inits[0, 3], wires=[edge, ancilla2])
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1])
+    qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1]))
     qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
+    qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2]))
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
@@ -86,7 +88,27 @@ def small_normal_init(tensor):
     return torch.nn.init.normal_(tensor, mean=0.0, std=0.1)
 
 def uniform_pi_init(tensor):
-    return nn.init.uniform_(tensor, a=-np.pi, b=np.pi)
+    return nn.init.uniform_(tensor, a=0.0, b=np.pi)
+
+def identity_block_init(tensor):
+    with torch.no_grad():
+        tensor.zero_()
+        if tensor.ndim < 1:
+            return tensor  # scalar param
+
+        # Total number of parameters
+        total_params = tensor.numel()
+        num_active = max(1, total_params // 3)
+
+        # Flatten, randomize, and reshape
+        flat = tensor.view(-1)
+        active_idx = torch.randperm(flat.shape[0])[:num_active]
+        flat[active_idx] = torch.randn_like(flat[active_idx]) * 0.1
+
+        return tensor
+    
+def input_process(tensor):
+    return torch.clamp(tensor, -1.0, 1.0) * np.pi
 
 
 class QGNNGraphClassifier(nn.Module):
@@ -101,6 +123,7 @@ class QGNNGraphClassifier(nn.Module):
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
         self.pqc_out = 5 # probs?
+        
         
         self.qconvs = nn.ModuleDict()
         self.upds = nn.ModuleDict()
@@ -160,8 +183,10 @@ class QGNNGraphClassifier(nn.Module):
         edge_features = self.input_edge(edge_features)
         node_features = self.input_node(node_features)
         
-        edge_features = torch.tanh(edge_features) * np.pi
-        node_features = torch.tanh(node_features) * np.pi
+        node_features = input_process(node_features)
+        # node_features = node_features + 0.01 * torch.randn_like(node_features)
+        edge_features = input_process(edge_features)
+        
         
         idx_dict = {
             (int(u), int(v)): i
