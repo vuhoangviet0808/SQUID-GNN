@@ -162,7 +162,6 @@ class QGNNGraphClassifier(nn.Module):
             )
             
             self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
-            break
             
         self.graph_head = MLP(
                 [self.final_dim, num_classes, num_classes],
@@ -204,42 +203,37 @@ class QGNNGraphClassifier(nn.Module):
         for i in range(self.hop_neighbor):
             subgraphs = star_subgraph(adj_mtx.cpu().numpy(), subgraph_size=self.graphlet_size)
             node_upd = torch.zeros((num_nodes, self.final_dim), device=node_features.device)
-            q_layer = self.qconvs[f"lay{1}"] #i+1}"]
-            upd_layer = self.upds[f"lay{1}"] #i+1}"]
-            norm_layer = self.norms[f"lay{1}"] #i+1}"]
+            q_layer = self.qconvs[f"lay{i+1}"]
+            upd_layer = self.upds[f"lay{i+1}"]
+            norm_layer = self.norms[f"lay{i+1}"]
 
-            updates_node = node_features.clone() 
+            # updates_node = node_features.clone() 
             
             centers = []
             updates = []
             
             for sub in subgraphs:
-                # center = sub[0]
-                # neighbors = sub[1:]
                 center, *neighbors = sub
 
                 n_feat = node_features[sub] 
-                # e_feat = edge_attributes[center, neighbors] 
                 edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
                 e_feat    = edge_features[edge_idxs]  
-                
                 inputs = torch.cat([e_feat, n_feat], dim=0)        
 
                 all_msg = q_layer(inputs.flatten())
                 aggr = all_msg
                 update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
-                
+            
                 centers.append(center)
                 updates.append(update_vec)
-                # update_vec = torch.tanh(update_vec) * np.pi
-                # updates_node[center] = update_vec # (updates_node[center] + update_vec)/2 
             
             centers = torch.tensor(centers, device=node_features.device)
             updates = torch.stack(updates, dim=0) 
             updates_node = torch.zeros_like(node_features)
             updates_node = updates_node.index_add(0, centers, updates)
             
-            node_features = norm_layer(updates_node + node_features)    
+            # node_features = norm_layer(updates_node + node_features)    
+            node_features = updates_node + node_features
         graph_embedding = global_mean_pool(node_features, batch)
         
         return self.graph_head(graph_embedding)
