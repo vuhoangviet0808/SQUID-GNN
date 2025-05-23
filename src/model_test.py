@@ -185,9 +185,9 @@ class QGNNGraphClassifier(nn.Module):
         edge_features = self.input_edge(edge_features)
         node_features = self.input_node(node_features)
         
-        node_features = input_process(node_features)
-        # node_features = node_features + 0.01 * torch.randn_like(node_features)
-        edge_features = input_process(edge_features)
+        # node_features = input_process(node_features)
+        # # node_features = node_features + 0.01 * torch.randn_like(node_features)
+        # edge_features = input_process(edge_features)
         
         
         idx_dict = {
@@ -210,9 +210,13 @@ class QGNNGraphClassifier(nn.Module):
 
             updates_node = node_features.clone() 
             
+            centers = []
+            updates = []
+            
             for sub in subgraphs:
-                center = sub[0]
-                neighbors = sub[1:]
+                # center = sub[0]
+                # neighbors = sub[1:]
+                center, *neighbors = sub
 
                 n_feat = node_features[sub] 
                 # e_feat = edge_attributes[center, neighbors] 
@@ -224,8 +228,17 @@ class QGNNGraphClassifier(nn.Module):
                 all_msg = q_layer(inputs.flatten())
                 aggr = all_msg
                 update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
+                
+                centers.append(center)
+                updates.append(update_vec)
                 # update_vec = torch.tanh(update_vec) * np.pi
-                updates_node[center] = update_vec # (updates_node[center] + update_vec)/2 
+                # updates_node[center] = update_vec # (updates_node[center] + update_vec)/2 
+            
+            centers = torch.tensor(centers, device=node_features.device)
+            updates = torch.stack(updates, dim=0) 
+            updates_node = torch.zeros_like(node_features)
+            updates_node = updates_node.index_add(0, centers, updates)
+            
             node_features = norm_layer(updates_node + node_features)    
         graph_embedding = global_mean_pool(node_features, batch)
         

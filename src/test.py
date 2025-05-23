@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as numpy
 # import pennylane as qml
 # from pennylane import numpy as np
+# from torch_scatter import scatter_add
 import torch.nn.functional as F
 from torch_geometric.nn import MLP, global_add_pool, global_mean_pool, global_max_pool   
 
@@ -110,7 +111,10 @@ class HandcraftGNN(nn.Module):
             norm_layer = self.norms[i]
             
             # updates = [[] for _ in range(num_nodes)]  # each list holds candidate updates
-            updates_node = node_features.clone() ## UPDATES
+            updates_node = torch.zeros_like(node_features) ## UPDATES
+            
+            centers = []
+            updates = []
             for sub in subgraphs:
                 center = sub[0]
                 neighbors = sub[1:]
@@ -123,12 +127,23 @@ class HandcraftGNN(nn.Module):
                 inputs = torch.cat([e_feat, n_feat], dim=1)      
                 all_msg = msg_layer(inputs)   
                 aggr = torch.sum(all_msg, dim=0)   
-                
                 new_center  = upd_layer(torch.cat([node_features[center], aggr], dim=0))
+                
+                centers.append(center)
+                updates.append(new_center)
+                
                 # updates[center].append(new_center)
-                updates_node[center] = updates_node[center] + new_center  
-            updates_node = F.relu(updates_node)
-            node_features = norm_layer(updates_node + node_features)
+                # updates_node[center] = updates_node[center] + new_center  
+            centers = torch.tensor(centers, device=node_features.device)
+            updates = torch.stack(updates, dim=0) 
+            
+            # updates_node = scatter_add(updates, centers, dim=0,
+            #            dim_size=node_features.size(0))
+            
+            updates_node = torch.zeros_like(node_features)
+            updates_node = updates_node.index_add(0, centers, updates)
+                        
+            node_features = updates_node + node_features # norm_layer(updates_node + node_features)
 
         graph_embedding = global_add_pool(node_features, batch)
         
