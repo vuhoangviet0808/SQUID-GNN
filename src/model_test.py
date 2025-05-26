@@ -75,10 +75,14 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
-        qml.expval(qml.PauliZ(center_wire)),
-        qml.expval(qml.PauliY(center_wire)),
         qml.expval(qml.PauliX(center_wire)),
+        qml.expval(qml.PauliY(center_wire)),
+        qml.expval(qml.PauliZ(center_wire)),
+        qml.expval(qml.PauliX(num_qbit)),
+        qml.expval(qml.PauliY(num_qbit)),
         qml.expval(qml.PauliZ(num_qbit)),
+        qml.expval(qml.PauliX(num_qbit+1)),
+        qml.expval(qml.PauliY(num_qbit+1)),
         qml.expval(qml.PauliZ(num_qbit+1)),
     ]
     return expval
@@ -123,7 +127,7 @@ class QGNNGraphClassifier(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 5 # probs?
+        self.pqc_out = 9 # probs?
         
         
         self.qconvs = nn.ModuleDict()
@@ -142,13 +146,13 @@ class QGNNGraphClassifier(nn.Module):
         self.input_node = MLP(
                     [self.node_input_dim, self.hidden_dim, self.final_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
 
         self.input_edge = MLP(
                     [self.edge_input_dim, self.hidden_dim, self.pqc_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
         
         for i in range(self.hop_neighbor):
@@ -158,7 +162,7 @@ class QGNNGraphClassifier(nn.Module):
             self.upds[f"lay{i+1}"] = MLP(
                     [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
             
             self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
@@ -166,7 +170,7 @@ class QGNNGraphClassifier(nn.Module):
         self.graph_head = MLP(
                 [self.final_dim, num_classes, num_classes],
                 act='leaky_relu', 
-                norm=None, dropout=0.5
+                norm=None, dropout=0.3
         ) 
         
     def forward(self, node_feat, edge_attr, edge_index, batch):
@@ -184,9 +188,9 @@ class QGNNGraphClassifier(nn.Module):
         edge_features = self.input_edge(edge_features)
         node_features = self.input_node(node_features)
         
-        # node_features = input_process(node_features)
+        node_features = input_process(node_features)
         # # node_features = node_features + 0.01 * torch.randn_like(node_features)
-        # edge_features = input_process(edge_features)
+        edge_features = input_process(edge_features)
         
         
         idx_dict = {

@@ -6,7 +6,7 @@ import argparse
 from torch import nn, optim
 
 
-from utils import train_graph, test_graph
+from utils import train_graph, test_graph, EarlyStopping
 from data import load_dataset
 from model_test import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
@@ -22,6 +22,7 @@ result_dir = os.path.join('../results')
 os.makedirs(result_dir, exist_ok=True)
 os.makedirs(os.path.join(result_dir, 'fig'), exist_ok=True)
 os.makedirs(os.path.join(result_dir, 'log'), exist_ok=True)
+os.makedirs(os.path.join(result_dir, 'model'), exist_ok=True)
 
 param_file = os.path.join(result_dir, 'log', f"{timestamp}_model_parameters.txt")
 grad_file = os.path.join(result_dir, 'log', f"{timestamp}_model_gradients.txt")
@@ -46,6 +47,7 @@ def get_args():
     
     # Debug options
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
+    parser.add_argument('--save_model', action='store_true', help='Enable saving model')
     
     # For switching between models
     parser.add_argument('--model', type=str, default='qgnn', 
@@ -205,12 +207,17 @@ def main(args):
         
     start = time.time()
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
+    
+    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.dataset.lower()}.pt")
+    early_stopping = EarlyStopping(patience=10, save_path=model_save)
+    
     if args.task == 'graph':
         for epoch in range(1, args.epochs + 1):
             train_graph(model, optimizer, train_loader, criterion, device)
             train_loss, train_acc, f1_train = test_graph(model, train_loader, criterion, device, num_classes)
             test_loss, test_acc, f1_test = test_graph(model, test_loader, criterion, device, num_classes)
             scheduler.step()
+            early_stopping(test_loss, model)
             train_losses.append(train_loss)
             test_losses.append(test_loss)
             train_accs.append(train_acc)
