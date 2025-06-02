@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import pennylane as qml
 import argparse
 from torch import nn, optim
+import numpy as np
 
 
 from utils import train_graph, test_graph, EarlyStopping
-from data import load_dataset
+from data import load_dataset, eval_dataset
 from model_test import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
 
@@ -32,6 +33,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Train QGNN on graph data")
     parser.add_argument('--dataset', type=str, default='MUTAG', help='Dataset name (e.g., MUTAG, ENZYMES, CORA)')
     parser.add_argument('--train_size', type=int, default=100)
+    parser.add_argument('--eval_size', type=int, default=150)
     parser.add_argument('--test_size', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--epochs', type=int, default=20)
@@ -42,16 +44,19 @@ def get_args():
     parser.add_argument('--num_gnn_layers', type=int, default=2)
     parser.add_argument('--num_ent_layers', type=int, default=1)
     parser.add_argument('--hidden_channels', type=int, default=32)
+    parser.add_argument('--seed', type=int, default=1712)
     parser.add_argument('--task', type=str, default='graph', choices=['graph', 'node'], help='graph or node classification')
 
     
     # Debug options
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
     parser.add_argument('--save_model', action='store_true', help='Enable saving model')
+    parser.add_argument('--gradient', action='store_true', help='Enable gradient saving')
+    parser.add_argument('--results', action='store_true', help='Evaluate results')
     
     # For switching between models
     parser.add_argument('--model', type=str, default='qgnn', 
-                        choices=['qgnn', 'handcraft', 'gin', 'gcn', 'gat'],
+                        choices=['qgnn', 'handcraft', 'gin', 'gcn', 'gat', 'sage', 'trans'],
                         help="Which model to run"
                         )
     parser.add_argument('--graphlet_size', type=int, default=10)
@@ -125,8 +130,42 @@ def main(args):
                 out_channels=num_classes,
                 num_layers=args.num_gnn_layers,
             )
+        elif args.model == 'gcn':
+            from baseline import GCN_Graph
+            model = GCN_Graph(
+                in_channels=node_input_dim,
+                hidden_channels=args.hidden_channels,
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+            )
+        elif args.model == 'gat':
+            from baseline import GAT_Graph
+            model = GAT_Graph(
+                in_channels=node_input_dim,
+                hidden_channels=args.hidden_channels//8,    # heads * hidden
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+                heads=8,
+            )
+        elif args.model == 'sage':
+            from baseline import GraphSAGE_Graph
+            model = GraphSAGE_Graph(
+                in_channels=node_input_dim,
+                hidden_channels=args.hidden_channels,
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers
+            )
+        elif args.model == 'trans':
+            from baseline import Transformer_Graph
+            model = Transformer_Graph(
+                in_channels=node_input_dim,
+                hidden_channels=args.hidden_channels//8,    # heads * hidden
+                out_channels=num_classes,
+                num_layers=args.num_gnn_layers,
+                heads=8,
+            )
         else:
-            raise ValueError("Unknown model type: use 'qgnn' or 'handcraft'")
+            raise ValueError(f"Unsupported model for graph task: {args.model}")
     elif args.task == 'node':
         data = dataset[0].to(device)
         if args.model == 'handcraft':
@@ -199,11 +238,12 @@ def main(args):
     test_accs = []
 
     # Training loop
-    string = "="*10 + f"{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}" + "="*10
-    with open(param_file, "w") as f_param:
-        f_param.write(string + "\n")
-    with open(grad_file, "w") as f_grad:
-        f_grad.write(string + "\n")
+    if args.gradient:
+        string = "="*10 + f"{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}" + "="*10
+        with open(param_file, "w") as f_param:
+            f_param.write(string + "\n")
+        with open(grad_file, "w") as f_grad:
+            f_grad.write(string + "\n")
         
     start = time.time()
     step_plot = args.epochs // 10 if args.epochs > 10 else 1
@@ -217,28 +257,30 @@ def main(args):
             train_loss, train_acc, f1_train = test_graph(model, train_loader, criterion, device, num_classes)
             test_loss, test_acc, f1_test = test_graph(model, test_loader, criterion, device, num_classes)
             scheduler.step()
-            early_stopping(test_loss, model)
+            if args.save_model:
+                early_stopping(test_loss, model)
             train_losses.append(train_loss)
             test_losses.append(test_loss)
             train_accs.append(train_acc)
             test_accs.append(test_acc)
             ############
-            # === Write model parameters to file ===
-            with open(param_file, "a") as f_param:
-                f_param.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
-                for name, param in model.named_parameters():
-                    f_param.write(f"{name}:\n{param.data.cpu().numpy()}\n\n")
+            if args.gradient:
+                # === Write model parameters to file ===
+                with open(param_file, "a") as f_param:
+                    f_param.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
+                    for name, param in model.named_parameters():
+                        f_param.write(f"{name}:\n{param.data.cpu().numpy()}\n\n")
 
-            # === Write gradients to separate file ===
-            with open(grad_file, "a") as f_grad:
-                f_grad.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
-                for name, param in model.named_parameters():
-                    if param.requires_grad:
-                        if param.grad is None:
-                            f_grad.write(f"{name}: No gradient (None)\n")
-                        else:
-                            grad = param.grad.cpu().numpy()
-                            f_grad.write(f"{name}:\n{grad}\n\n")
+                # === Write gradients to separate file ===
+                with open(grad_file, "a") as f_grad:
+                    f_grad.write("="*40 + f" Epoch {epoch} " + "="*40 + "\n")
+                    for name, param in model.named_parameters():
+                        if param.requires_grad:
+                            if param.grad is None:
+                                f_grad.write(f"{name}: No gradient (None)\n")
+                            else:
+                                grad = param.grad.cpu().numpy()
+                                f_grad.write(f"{name}:\n{grad}\n\n")
             ############
             if epoch % step_plot == 0:
                 print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
@@ -290,6 +332,26 @@ def main(args):
         # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plot_path = f"plot_{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plt.savefig(os.path.join('../results/fig', plot_path), dpi=300)
+        
+    if args.results:
+        accuracies = []
+        num_runs = 100  
+        
+        for each in range(num_runs):
+            eval_loader = eval_dataset(
+                name=args.dataset,
+                path='../data',
+                eval_size=args.eval_size,
+                batch_size=args.batch_size,
+                seed=args.seed+each
+            )
+            _, eval_acc, _ = test_graph(model, eval_loader, criterion, device, num_classes)
+            accuracies.append(eval_acc)
+
+        mean_acc = np.mean(accuracies)
+        std_acc = np.std(accuracies, ddof=1)  # unbiased std deviation
+
+        print(f"{args.model} Mean Accuracy: {mean_acc:.4f} ± {std_acc:.3f}")
 
 if __name__ == "__main__":
     args = get_args()

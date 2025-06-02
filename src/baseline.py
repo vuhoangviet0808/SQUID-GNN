@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GINConv, GCNConv, GATConv, MLP, global_add_pool
+from torch_geometric.nn import GINConv, GCNConv, GATConv, SAGEConv, TransformerConv, MLP, global_add_pool
 
 class GIN_Node(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
@@ -85,45 +85,72 @@ class GIN_Graph(nn.Module):
         x = global_add_pool(x, batch)
         return self.classifier(x)
     
-
-class BaseGNN(nn.Module):
-    def __init__(self, conv_layer, in_channels, hidden_channels, out_channels, num_layers, **kwargs):
+class GCN_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
         super().__init__()
         self.convs = nn.ModuleList()
         for i in range(num_layers):
-            conv_in = in_channels if i == 0 else hidden_channels
-            self.convs.append(conv_layer(conv_in, hidden_channels, **kwargs))
-
+            in_dim = in_channels if i == 0 else hidden_channels
+            self.convs.append(GCNConv(in_dim, hidden_channels))
         self.dropout = nn.Dropout(0.5)
         self.classifier = nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, x, edge_index, edge_attr=None, batch=None):
+    def forward(self, x, edge_attr, edge_index, batch=None):
         for conv in self.convs:
-            x = conv(x, edge_index)
-            x = F.relu(x)
+            x = F.relu(conv(x, edge_index))
             x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+    
+class GAT_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=1):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels * heads
+            self.convs.append(GATConv(in_dim, hidden_channels, heads=heads))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels * heads, out_channels)
 
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+
+
+class GraphSAGE_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels
+            self.convs.append(SAGEConv(in_dim, hidden_channels))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
         x = global_add_pool(x, batch)
         return self.classifier(x)
     
     
-# GCN
-class GCN_Graph(BaseGNN):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super().__init__(GCNConv, in_channels, hidden_channels, out_channels, num_layers)
-        
+class Transformer_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=1):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels * heads
+            self.convs.append(TransformerConv(in_dim, hidden_channels, heads=heads))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels * heads, out_channels)
 
-# GAT
-class GAT_Graph(BaseGNN):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=8):
-        super().__init__(GATConv, in_channels, hidden_channels, out_channels, num_layers, heads=heads)
-
-# GraphSAGE
-class GraphSAGE_Graph(BaseGNN):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super().__init__(SAGEConv, in_channels, hidden_channels, out_channels, num_layers)
-
-# TransformerConv
-class TransformerConv_Graph(BaseGNN):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=4):
-        super().__init__(TransformerConv, in_channels, hidden_channels, out_channels, num_layers, heads=heads)
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)

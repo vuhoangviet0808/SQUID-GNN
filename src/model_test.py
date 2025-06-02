@@ -76,14 +76,14 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
         qml.expval(qml.PauliX(center_wire)),
-        qml.expval(qml.PauliY(center_wire)),
-        qml.expval(qml.PauliZ(center_wire)),
-        qml.expval(qml.PauliX(num_qbit)),
-        qml.expval(qml.PauliY(num_qbit)),
-        qml.expval(qml.PauliZ(num_qbit)),
-        qml.expval(qml.PauliX(num_qbit+1)),
-        qml.expval(qml.PauliY(num_qbit+1)),
-        qml.expval(qml.PauliZ(num_qbit+1)),
+        # qml.expval(qml.PauliY(center_wire)),
+        # qml.expval(qml.PauliZ(center_wire)),
+        # qml.expval(qml.PauliX(num_qbit)),
+        # qml.expval(qml.PauliY(num_qbit)),
+        # qml.expval(qml.PauliZ(num_qbit)),
+        # qml.expval(qml.PauliX(num_qbit+1)),
+        # qml.expval(qml.PauliY(num_qbit+1)),
+        # qml.expval(qml.PauliZ(num_qbit+1)),
     ]
     return expval
 
@@ -127,7 +127,7 @@ class QGNNGraphClassifier(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 9 # probs?
+        self.pqc_out = 1 # probs?
         
         
         self.qconvs = nn.ModuleDict()

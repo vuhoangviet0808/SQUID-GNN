@@ -23,9 +23,10 @@ Key packages:
 
 Run training with:
 ```bash
-!python main.py --task graph --dataset MUTAG --plot \
---model handcraft --num_gnn_layers 3 --hidden_channels 64\
---epochs 50 --lr 0.001 --step_size 10 --gamma 0.9 
+!python main.py --task graph --dataset MUTAG  --epochs 50 --lr 0.005 --step_size 10 --gamma 0.9\
+--train_size 100 --test_size 50 --eval_size 100 --seed 1309\
+--model gin --num_gnn_layers 3 --hidden_channels 128  \
+--results --plot --gradient --save_model 
 ```
 
 ### Parameters
