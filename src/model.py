@@ -9,7 +9,7 @@ from utils import star_subgraph
 
 
 def message_passing_pqc(strong, twodesign, inits, wires):
-    edge, center, neighbor, ancilla = wires
+    edge, center, neighbor, ancilla1, ancilla2 = wires
     ##
     # qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, center, neighbor])
     ##
@@ -22,10 +22,14 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     # qml.StronglyEntanglingLayers(weights=strong[2], wires=[center, neighbor])
     
     ## only rotation
-    qml.CRX(inits[0, 0], wires=[neighbor, ancilla])
-    qml.CRY(inits[0, 1], wires=[edge, ancilla])
-    qml.CRZ(inits[0, 2], wires=[neighbor, ancilla])
-    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla])
+    qml.CRX(inits[0, 0], wires=[neighbor, ancilla1])
+    qml.CRY(inits[0, 1], wires=[edge, ancilla1])
+    qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
+    qml.CRY(inits[0, 3], wires=[edge, ancilla2])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1])
+    # qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1]))
+    qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
+    # qml.adjoint(qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2]))
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
@@ -61,18 +65,55 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     for i in range(num_edges):
 
         message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, 
-                            wires=[i, center_wire, center_wire+i+1, num_qbit])
+                            wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
 
     qml.StronglyEntanglingLayers(
         weights=update[0], 
-        wires=[center_wire, num_qbit]
+        wires=[center_wire, num_qbit, num_qbit+1]
         )
-    probs = qml.probs(wires=[center_wire, num_qbit])
-    return probs
+    # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
+    # return probs
+    # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
+    expval = [
+        qml.expval(qml.PauliX(center_wire)),
+        # qml.expval(qml.PauliY(center_wire)),
+        # qml.expval(qml.PauliZ(center_wire)),
+        # qml.expval(qml.PauliX(num_qbit)),
+        # qml.expval(qml.PauliY(num_qbit)),
+        # qml.expval(qml.PauliZ(num_qbit)),
+        # qml.expval(qml.PauliX(num_qbit+1)),
+        # qml.expval(qml.PauliY(num_qbit+1)),
+        # qml.expval(qml.PauliZ(num_qbit+1)),
+    ]
+    return expval
 
 
 def small_normal_init(tensor):
     return torch.nn.init.normal_(tensor, mean=0.0, std=0.1)
+
+def uniform_pi_init(tensor):
+    return nn.init.uniform_(tensor, a=0.0, b=np.pi)
+
+def identity_block_init(tensor):
+    with torch.no_grad():
+        tensor.zero_()
+        if tensor.ndim < 1:
+            return tensor  # scalar param
+
+        # Total number of parameters
+        total_params = tensor.numel()
+        num_active = max(1, total_params // 3)
+
+        # Flatten, randomize, and reshape
+        flat = tensor.view(-1)
+        active_idx = torch.randperm(flat.shape[0])[:num_active]
+        flat[active_idx] = torch.randn_like(flat[active_idx]) * 0.1
+
+        return tensor
+    
+def input_process(tensor):
+    # return torch.clamp(tensor, -1.0, 1.0) * np.pi
+    return torch.tanh(tensor) * np.pi
 
 
 class QGNNGraphClassifier(nn.Module):
@@ -86,7 +127,8 @@ class QGNNGraphClassifier(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 4 # probs?
+        self.pqc_out = 1 # probs?
+        
         
         self.qconvs = nn.ModuleDict()
         self.upds = nn.ModuleDict()
@@ -104,23 +146,23 @@ class QGNNGraphClassifier(nn.Module):
         self.input_node = MLP(
                     [self.node_input_dim, self.hidden_dim, self.final_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
 
         self.input_edge = MLP(
                     [self.edge_input_dim, self.hidden_dim, self.pqc_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
         
         for i in range(self.hop_neighbor):
             qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
-            self.qconvs[f"lay{i+1}"] = qml.qnn.TorchLayer(qnode, w_shapes, small_normal_init)
+            self.qconvs[f"lay{i+1}"] = qml.qnn.TorchLayer(qnode, w_shapes, uniform_pi_init)
             
             self.upds[f"lay{i+1}"] = MLP(
                     [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
                     act='leaky_relu', 
-                    norm=None, dropout=0.2
+                    norm=None, dropout=0.3
             )
             
             self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
@@ -128,7 +170,7 @@ class QGNNGraphClassifier(nn.Module):
         self.graph_head = MLP(
                 [self.final_dim, num_classes, num_classes],
                 act='leaky_relu', 
-                norm=None, dropout=0.5
+                norm=None, dropout=0.3
         ) 
         
     def forward(self, node_feat, edge_attr, edge_index, batch):
@@ -146,8 +188,10 @@ class QGNNGraphClassifier(nn.Module):
         edge_features = self.input_edge(edge_features)
         node_features = self.input_node(node_features)
         
-        edge_features = torch.tanh(edge_features) * np.pi
-        node_features = torch.tanh(node_features) * np.pi
+        node_features = input_process(node_features)
+        # # node_features = node_features + 0.01 * torch.randn_like(node_features)
+        edge_features = input_process(edge_features)
+        
         
         idx_dict = {
             (int(u), int(v)): i
@@ -166,82 +210,38 @@ class QGNNGraphClassifier(nn.Module):
             q_layer = self.qconvs[f"lay{i+1}"]
             upd_layer = self.upds[f"lay{i+1}"]
             norm_layer = self.norms[f"lay{i+1}"]
-            # agg_layer = self.aggs[f"lay{i+1}"]
-            
-            # updates = [[] for _ in range(num_nodes)]
-            # updates_node = node_features.clone() ## UPDATES
-            
-            # ## TODO: Trying chunking PQCs  
-            # for sub in subgraphs:
-            #     center, *neighbors = sub
 
-            #     n_feat = node_features[sub]  # shape: [len(sub), d_n]
-                
-            #     edge_idxs = [idx_dict[(center, int(n))] for n in neighbors]
-            #     e_feat = edge_features[edge_idxs]  # shape: [len(neighbors), d_e]
-            #     n_feat = n_feat.reshape(len(sub),self.pqc_dim,-1)   
-                
-            #     for i in range(n_feat.shape[2]):
-            #         inputs = torch.cat([e_feat, n_feat[:,:,i]], dim=0)   
-            #         all_msg = q_layer(inputs.flatten()).reshape(-1,2)
-            #         # aggr = torch.sum(all_msg, dim=0)
-                    
-            #         aggr = all_msg.flatten()
-            #         update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
-            #         # update_vec = aggr
-            #         update_vec = torch.tanh(update_vec) * np.pi
-            #         updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] = (updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] + update_vec)/2 
-                    
-            ## TODO: End test section 
-            # for sub in subgraphs:
-            #     center = sub[0]
-            #     neighbors = sub[1:]
-
-            #     n_feat = node_features[sub] 
-            #     # e_feat = edge_attributes[center, neighbors] 
-            #     edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
-            #     e_feat    = edge_features[edge_idxs]  
-                
-            #     inputs = torch.cat([e_feat, n_feat], dim=0)        
-
-            #     all_msg = q_layer(inputs.flatten()).reshape(-1,2)
-            #     aggr = torch.sum(all_msg, dim=0)
-                
-            #     update_vec  = upd_layer(torch.cat([node_features[center], aggr], dim=0))
-            #     # updates[center].append(new_center)
-            #     updates_node[center] += update_vec  
-            ## TODO: End original section 
-            # updates_node = F.relu(updates_node)
+            # updates_node = node_features.clone() 
             
-            
-            ## FIXME: New approach - using index_add
             centers = []
             updates = []
             
             for sub in subgraphs:
                 center, *neighbors = sub
+
                 n_feat = node_features[sub] 
-                edge_idxs = [idx_dict[(center, int(n))] for n in neighbors]
-                e_feat = edge_features[edge_idxs]
-                inputs = torch.cat([e_feat, n_feat], dim=0)
+                # edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
+                edge_idxs = [
+                    idx_dict[(min(center, int(n)), max(center, int(n)))] 
+                    for n in neighbors 
+                ]
+                e_feat    = edge_features[edge_idxs]  
+                inputs = torch.cat([e_feat, n_feat], dim=0)        
+
                 all_msg = q_layer(inputs.flatten())
-                print(all_msg.shape)
-                prin()
                 aggr = all_msg
                 update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
-                
+            
                 centers.append(center)
                 updates.append(update_vec)
-                
+            
             centers = torch.tensor(centers, device=node_features.device)
             updates = torch.stack(updates, dim=0) 
             updates_node = torch.zeros_like(node_features)
             updates_node = updates_node.index_add(0, centers, updates)
             
-            node_features = norm_layer(updates_node + node_features)    
+            # node_features = norm_layer(updates_node + node_features)    
             node_features = updates_node + node_features
-            
-            
         graph_embedding = global_mean_pool(node_features, batch)
         
         return self.graph_head(graph_embedding)

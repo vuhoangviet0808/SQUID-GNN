@@ -9,7 +9,7 @@ import numpy as np
 
 from utils import train_graph, test_graph, EarlyStopping
 from data import load_dataset, eval_dataset
-from model_test import QGNNGraphClassifier
+from model import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
 
 from datetime import datetime
