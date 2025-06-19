@@ -251,6 +251,10 @@ def main(args):
     model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.dataset.lower()}.pt")
     early_stopping = EarlyStopping(patience=10, save_path=model_save)
     
+    print(f"{timestamp} \n")
+    print(f"Training model {args.model} on {args.dataset} with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
+          f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
+    
     if args.task == 'graph':
         for epoch in range(1, args.epochs + 1):
             train_graph(model, optimizer, train_loader, criterion, device)

@@ -25,7 +25,7 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     qml.CRX(inits[0, 0], wires=[neighbor, ancilla])
     qml.CRY(inits[0, 1], wires=[edge, ancilla])
     qml.CRZ(inits[0, 2], wires=[neighbor, ancilla])
-    # qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla])
 
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
@@ -169,29 +169,28 @@ class QGNNGraphClassifier(nn.Module):
             # agg_layer = self.aggs[f"lay{i+1}"]
             
             # updates = [[] for _ in range(num_nodes)]
-            updates_node = node_features.clone() ## UPDATES
+            # updates_node = node_features.clone() ## UPDATES
             
-            ## TODO: Trying chunking PQCs  
-            for sub in subgraphs:
-                center = sub[0]
-                neighbors = sub[1:]
+            # ## TODO: Trying chunking PQCs  
+            # for sub in subgraphs:
+            #     center, *neighbors = sub
 
-                n_feat = node_features[sub]  # shape: [len(sub), d_n]
+            #     n_feat = node_features[sub]  # shape: [len(sub), d_n]
                 
-                edge_idxs = [idx_dict[(center, int(n))] for n in neighbors]
-                e_feat = edge_features[edge_idxs]  # shape: [len(neighbors), d_e]
-                n_feat = n_feat.reshape(len(sub),self.pqc_dim,-1)   
+            #     edge_idxs = [idx_dict[(center, int(n))] for n in neighbors]
+            #     e_feat = edge_features[edge_idxs]  # shape: [len(neighbors), d_e]
+            #     n_feat = n_feat.reshape(len(sub),self.pqc_dim,-1)   
                 
-                for i in range(n_feat.shape[2]):
-                    inputs = torch.cat([e_feat, n_feat[:,:,i]], dim=0)   
-                    all_msg = q_layer(inputs.flatten()).reshape(-1,2)
-                    # aggr = torch.sum(all_msg, dim=0)
+            #     for i in range(n_feat.shape[2]):
+            #         inputs = torch.cat([e_feat, n_feat[:,:,i]], dim=0)   
+            #         all_msg = q_layer(inputs.flatten()).reshape(-1,2)
+            #         # aggr = torch.sum(all_msg, dim=0)
                     
-                    aggr = all_msg.flatten()
-                    update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
-                    # update_vec = aggr
-                    update_vec = torch.tanh(update_vec) * np.pi
-                    updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] = (updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] + update_vec)/2 
+            #         aggr = all_msg.flatten()
+            #         update_vec  = upd_layer(torch.cat([node_features[center, i*self.pqc_dim:(i+1)*self.pqc_dim], aggr], dim=0))
+            #         # update_vec = aggr
+            #         update_vec = torch.tanh(update_vec) * np.pi
+            #         updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] = (updates_node[center, i*self.pqc_dim:(i+1)*self.pqc_dim] + update_vec)/2 
                     
             ## TODO: End test section 
             # for sub in subgraphs:
@@ -213,13 +212,36 @@ class QGNNGraphClassifier(nn.Module):
             #     updates_node[center] += update_vec  
             ## TODO: End original section 
             # updates_node = F.relu(updates_node)
-            node_features = norm_layer(updates_node + node_features)    
-            # updates_node = []
-            # for update in updates:
-            #     updates_node.append(torch.stack(update))
+            
+            
+            ## FIXME: New approach - using index_add
+            centers = []
+            updates = []
+            
+            for sub in subgraphs:
+                center, *neighbors = sub
+                n_feat = node_features[sub] 
+                edge_idxs = [idx_dict[(center, int(n))] for n in neighbors]
+                e_feat = edge_features[edge_idxs]
+                inputs = torch.cat([e_feat, n_feat], dim=0)
+                all_msg = q_layer(inputs.flatten())
+                print(all_msg.shape)
+                prin()
+                aggr = all_msg
+                update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
                 
-            # node_features = F.relu(torch.vstack(updates_node))
-        # node_features = self.final(node_features)
+                centers.append(center)
+                updates.append(update_vec)
+                
+            centers = torch.tensor(centers, device=node_features.device)
+            updates = torch.stack(updates, dim=0) 
+            updates_node = torch.zeros_like(node_features)
+            updates_node = updates_node.index_add(0, centers, updates)
+            
+            node_features = norm_layer(updates_node + node_features)    
+            node_features = updates_node + node_features
+            
+            
         graph_embedding = global_mean_pool(node_features, batch)
         
         return self.graph_head(graph_embedding)
