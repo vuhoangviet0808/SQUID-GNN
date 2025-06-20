@@ -52,6 +52,23 @@ def eval_dataset(name, path='../data', eval_size=None, batch_size=32, seed=1309)
     
     return eval_loader
 
+def random_split(data, train_ratio=0.6, val_ratio=0.2, seed=42):
+    torch.manual_seed(seed)
+    num_nodes = data.num_nodes
+    perm = torch.randperm(num_nodes)
+
+    train_end = int(train_ratio * num_nodes)
+    val_end = train_end + int(val_ratio * num_nodes)
+
+    data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+    data.train_mask[perm[:train_end]] = True
+    data.val_mask[perm[train_end:val_end]] = True
+    data.test_mask[perm[val_end:]] = True
+    return data
+
 
 # def load_dataset(name, path='../data', train_size=None, eval_size=None, test_size=None, batch_size=32):
 #     name = name.upper()

@@ -11,7 +11,7 @@ class GIN_Node(nn.Module):
             mlp = MLP([in_channels if i==0 else hidden_channels,
                        hidden_channels, hidden_channels])
             self.convs.append(GINConv(nn=mlp, train_eps=False))
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(0.8)
         self.classifier = nn.Linear(hidden_channels, out_channels)
 
     def forward(self, x, edge_attr, edge_index, batch=None):
@@ -40,7 +40,7 @@ class GCN_Node(nn.Module):
         return self.convs[-1](x, edge_index)
 
 
-class GATN_Node(nn.Module):
+class GAT_Node(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,
                  num_layers, heads=8, dropout=0.6):
         super().__init__()
@@ -65,7 +65,7 @@ class GATN_Node(nn.Module):
         return self.convs[-1](x, edge_index)
     
     
-# NOTE: Graph 
+## NOTE: Graph Task
 
 class GIN_Graph(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):

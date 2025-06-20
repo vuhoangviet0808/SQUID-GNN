@@ -8,7 +8,7 @@ import numpy as np
 
 
 from utils import train_graph, test_graph, EarlyStopping
-from data import load_dataset, eval_dataset
+from data import load_dataset, eval_dataset, random_split
 from model import QGNNGraphClassifier
 from test import HandcraftGNN, HandcraftGNN_NodeClassification
 
@@ -305,6 +305,10 @@ def main(args):
             test_losses.append(test_metrics['test']['loss'])
             train_accs.append(test_metrics['train']['acc'])
             test_accs.append(test_metrics['test']['acc'])
+            
+            if args.save_model:
+                early_stopping(test_losses[-1], model)
+                
             scheduler.step(test_metrics['val']['loss'])
             if epoch % step_plot == 0:
                 print(f"Epoch {epoch:02d} | Train Loss: {train_loss:.4f} |" +
@@ -316,6 +320,7 @@ def main(args):
         epochs_range = range(1, args.epochs + 1)
 
         plt.figure(figsize=(10, 5))
+        plt.suptitle(f"{args.model.upper()} on {args.dataset.upper()}", fontsize=14)
         plt.subplot(1, 2, 1)
         plt.plot(epochs_range, train_losses, label="Train Loss")
         plt.plot(epochs_range, test_losses, label="Test Loss")
@@ -332,7 +337,8 @@ def main(args):
         plt.ylabel("Accuracy")
         plt.legend()
 
-        plt.tight_layout()
+        # plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 1, 0.95]) 
         # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plot_path = f"plot_{timestamp}_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
         plt.savefig(os.path.join('../results/fig', plot_path), dpi=300)
@@ -340,7 +346,6 @@ def main(args):
     if args.results:
         accuracies = []
         num_runs = 100  
-        
         for each in range(num_runs):
             eval_loader = eval_dataset(
                 name=args.dataset,
@@ -349,7 +354,15 @@ def main(args):
                 batch_size=args.batch_size,
                 seed=args.seed+each
             )
-            _, eval_acc, _ = test_graph(model, eval_loader, criterion, device, num_classes)
+            if args.task == 'graph':
+                _, eval_acc, _ = test_graph(model, eval_loader, criterion, device, num_classes)
+            elif args.task == 'node':
+                eval_loader = random_split(eval_loader, train_ratio=0.6, val_ratio=0.2, seed=args.seed+each)
+                eval_metrics = test_node(model, eval_loader, criterion, device, num_classes)
+                eval_acc = eval_metrics['val']['acc']
+            else:
+                raise ValueError(f"Unsupported task: {args.task}")
+            
             accuracies.append(eval_acc)
 
         mean_acc = np.mean(accuracies)
