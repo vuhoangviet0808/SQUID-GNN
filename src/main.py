@@ -96,7 +96,9 @@ def main(args):
  
     # Model metadata
     node_input_dim = dataset[0].x.shape[1] if dataset[0].x is not None else 0
-    edge_input_dim = dataset[0].edge_attr.shape[1] if dataset[0].edge_attr is not None else 0
+    edge_input_dim = dataset[0].edge_attr.shape if dataset[0].edge_attr is not None else 0
+    if edge_input_dim:
+        edge_input_dim = edge_input_dim[0] if len(edge_input_dim) < 2 else edge_input_dim[1]
     num_classes = dataset.num_classes
     # Model init
     if args.task == 'graph':
@@ -213,7 +215,7 @@ def main(args):
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss() #nn.CrossEntropyLoss()
 
     ## Note: For debugging purposes, you can uncomment the following lines to print model details. 
     # ##
