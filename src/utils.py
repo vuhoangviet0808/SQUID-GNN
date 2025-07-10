@@ -2,7 +2,7 @@ import torch
 import random
 from collections import defaultdict
 # from torchmetrics.classification import MulticlassF1Score
-
+from torch_geometric.utils import degree
 
 def star_subgraph(adjacency_matrix, subgraph_size=4):
     num_nodes = adjacency_matrix.shape[0]
@@ -171,4 +171,40 @@ class ToFloat:
         data.x = data.x.float()             
         if data.edge_attr is not None:
             data.edge_attr = data.edge_attr.float()
+        return data
+    
+class FixZINC(ToFloat):
+    def __call__(self, data):
+        data = super().__call__(data)  
+        if data.y.dim() == 0:
+            data.y = data.y.unsqueeze(-1)
+        return data
+
+
+class ConstantX(object):
+    def __call__(self, data):
+        if data.x is None:                            
+            data.x = torch.ones((data.num_nodes, 1),
+                                 dtype=torch.float)
+        return data
+    
+
+class DegreeX(object):
+    def __call__(self, data):
+        if data.x is None:
+            deg = degree(data.edge_index[0],
+                         data.num_nodes,
+                         dtype=torch.float)            
+            data.x = deg.view(-1, 1)                  
+        return data
+
+class OneHotDegree(object):
+    def __call__(self, data):
+        if data.x is None:
+            deg = degree(data.edge_index[0],
+                         data.num_nodes).long()     
+            num_classes = int(deg.max().item()) + 1
+            data.x = torch.nn.functional.one_hot(deg,
+                                                 num_classes)\
+                                         .to(torch.float)
         return data

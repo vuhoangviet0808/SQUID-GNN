@@ -104,7 +104,10 @@ def main(args):
     edge_input_dim = dataset[0].edge_attr.shape if dataset[0].edge_attr is not None else 0
     if edge_input_dim:
         edge_input_dim = edge_input_dim[0] if len(edge_input_dim) < 2 else edge_input_dim[1]
-    num_classes = dataset.num_classes
+    if args.dataset == "ZINC":
+        num_classes = 1    
+    else:
+        num_classes = dataset.num_classes
     # Model init
     if args.task == 'graph':
         if args.model == 'qgnn':

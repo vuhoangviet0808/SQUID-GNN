@@ -2,19 +2,21 @@ import torch
 import os
 from torch_geometric.datasets import TUDataset, ZINC, Planetoid, WikipediaNetwork
 from torch_geometric.loader import DataLoader
-from utils import ToFloat
+from utils import FixZINC, ConstantX
 
 def load_dataset(name, path='../data', train_size=None, test_size=None, batch_size=32):
     name = name.upper()
     task_type = 'graph'
 
-    if name in ['MUTAG', 'ENZYMES', 'PROTEINS', 'REDDIT-BINARY']:
+    if name in ['MUTAG', 'ENZYMES', 'PROTEINS']:
         dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name)
         torch.manual_seed(1712)
         dataset = dataset.shuffle()
-
+    elif name == 'REDDIT-BINARY':
+        dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name, transform=ConstantX())
+        torch.manual_seed(1712)
     elif name == 'ZINC':
-        dataset = ZINC(root=os.path.join(path, 'ZINC'), transform=ToFloat())
+        dataset = ZINC(root=os.path.join(path, 'ZINC'), transform=FixZINC())
         torch.manual_seed(1712)
         dataset = dataset.shuffle()
 
