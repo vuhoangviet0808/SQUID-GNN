@@ -2,6 +2,7 @@ import torch
 import os
 from torch_geometric.datasets import TUDataset, ZINC, Planetoid, WikipediaNetwork
 from torch_geometric.loader import DataLoader
+from utils import ToFloat
 
 def load_dataset(name, path='../data', train_size=None, test_size=None, batch_size=32):
     name = name.upper()
@@ -13,7 +14,7 @@ def load_dataset(name, path='../data', train_size=None, test_size=None, batch_si
         dataset = dataset.shuffle()
 
     elif name == 'ZINC':
-        dataset = ZINC(root=os.path.join(path, 'ZINC'))
+        dataset = ZINC(root=os.path.join(path, 'ZINC'), transform=ToFloat())
         torch.manual_seed(1712)
         dataset = dataset.shuffle()
 

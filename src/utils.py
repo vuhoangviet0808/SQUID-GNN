@@ -166,3 +166,9 @@ class EarlyStopping:
     def save_checkpoint(self, model):
         torch.save(model.state_dict(), self.save_path)
 
+class ToFloat:
+    def __call__(self, data):
+        data.x = data.x.float()             
+        if data.edge_attr is not None:
+            data.edge_attr = data.edge_attr.float()
+        return data
