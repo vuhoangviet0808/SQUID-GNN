@@ -32,12 +32,13 @@ grad_file = os.path.join(result_dir, 'log', f"{timestamp}_model_gradients.txt")
 def get_args():
     parser = argparse.ArgumentParser(description="Train QGNN on graph data")
     parser.add_argument('--dataset', type=str, default='MUTAG', help='Dataset name (e.g., MUTAG, ENZYMES, CORA)')
-    parser.add_argument('--train_size', type=int, default=100)
-    parser.add_argument('--eval_size', type=int, default=150)
-    parser.add_argument('--test_size', type=int, default=50)
+    parser.add_argument('--train_size', type=int, default=0.7)
+    parser.add_argument('--eval_size', type=int, default=0.5)
+    parser.add_argument('--test_size', type=int, default=0.2)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--lr', type=float, default=5e-2)
+    parser.add_argument('--w_decay', type=float, default=0)
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.8)
     parser.add_argument('--node_qubit', type=int, default=3)
@@ -46,7 +47,7 @@ def get_args():
     parser.add_argument('--hidden_channels', type=int, default=32)
     parser.add_argument('--seed', type=int, default=1712)
     parser.add_argument('--task', type=str, default='graph', choices=['graph', 'node'], help='graph or node classification')
-    
+
     
     # Debug options
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
@@ -63,7 +64,7 @@ def get_args():
 
     # for loss function
     parser.add_argument('--criterion', type=str, default='crossentropy',
-                        choices=['crossentropy', 'MSE', 'BCE'],
+                        choices=['crossentropy', 'MSE', 'BCE', 'L1'],
                         help="Which loss function to train model")
     
     
@@ -74,7 +75,8 @@ def main(args):
     args.node_qubit = args.graphlet_size
     edge_qubit = args.node_qubit - 1
     n_qubits = args.node_qubit + edge_qubit
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     q_dev = qml.device("default.qubit", wires=n_qubits + 2) # number of ancilla qubits
 
     # PQC weight shape settings
@@ -214,6 +216,14 @@ def main(args):
                 num_layers=args.num_gnn_layers,
                 heads=8,
             )
+        elif args.model == 'sage':
+            from baseline import GraphSAGE_Node
+            model = GraphSAGE_Node(
+                in_channels=dataset.num_features,
+                hidden_channels=args.hidden_channels,
+                out_channels=dataset.num_classes,
+                num_layers=args.num_gnn_layers
+            )
         else:
             raise ValueError(f"Unsupported model for node task: {args.model}")
     else:
@@ -221,18 +231,18 @@ def main(args):
     
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.w_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
-    # criterion = nn.MSELoss() #nn.CrossEntropyLoss()
     if args.criterion == 'crossentropy':
         criterion = nn.CrossEntropyLoss()
     elif args.criterion == 'MSE':
         criterion = nn.MSELoss()
     elif args.criterion == 'BCE':
         criterion = nn.BCEWithLogitsLoss()
+    elif args.criterion == 'L1':
+        criterion = nn.L1Loss()
     else:
         raise ValueError(f"Unssuported loss function")
-
 
     ## Note: For debugging purposes, you can uncomment the following lines to print model details. 
     # ##
@@ -376,7 +386,7 @@ def main(args):
             if args.task == 'graph':
                 _, eval_acc, _ = test_graph(model, eval_loader, criterion, device, num_classes)
             elif args.task == 'node':
-                eval_loader = random_split(eval_loader, train_ratio=0.6, val_ratio=0.2, seed=args.seed+each)
+                eval_loader = random_split(eval_loader, train_ratio=0.2, val_ratio=0.5, seed=args.seed+each)
                 eval_metrics = test_node(model, eval_loader, criterion, device, num_classes)
                 eval_acc = eval_metrics['val']['acc']
             else:

@@ -1,8 +1,8 @@
 import torch
 import os
-from torch_geometric.datasets import TUDataset, ZINC, Planetoid, WikipediaNetwork
+from torch_geometric.datasets import TUDataset, ZINC, Planetoid, WebKB
 from torch_geometric.loader import DataLoader
-from utils import FixZINC, ConstantX
+from utils import FixZINC, ConstantX, DegreeX
 
 def load_dataset(name, path='../data', train_size=None, test_size=None, batch_size=32):
     name = name.upper()
@@ -15,6 +15,8 @@ def load_dataset(name, path='../data', train_size=None, test_size=None, batch_si
     elif name == 'REDDIT-BINARY':
         dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name, transform=ConstantX())
         torch.manual_seed(1712)
+        dataset = dataset.shuffle()
+
     elif name == 'ZINC':
         dataset = ZINC(root=os.path.join(path, 'ZINC'), transform=FixZINC())
         torch.manual_seed(1712)
@@ -26,7 +28,7 @@ def load_dataset(name, path='../data', train_size=None, test_size=None, batch_si
         return dataset, data, data, 'node'
 
     elif name in ['CORNELL', 'WISCONSIN']:
-        dataset = WikipediaNetwork(root=os.path.join(path, 'WebKB'), name=name.lower(), geom_gcn_preprocess=True)
+        dataset = WebKB(root=os.path.join(path, 'WebKB'), name=name.lower(), geom_gcn_preprocess=True)
         data = dataset[0]
         return dataset, data, data, 'node'
 
@@ -50,13 +52,19 @@ def eval_dataset(name, path='../data', eval_size=None, batch_size=32, seed=1309)
     name = name.upper()
     task_type = 'graph'
 
-    if name in ['MUTAG', 'ENZYMES', 'PROTEINS', 'REDDIT-BINARY']:
+    if name in ['MUTAG', 'ENZYMES', 'PROTEINS']:
         dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name)
         torch.manual_seed(seed)
         dataset = dataset.shuffle()
         eval_set = dataset[:eval_size] if eval_size else dataset[int(0.8 * len(dataset)):]
         eval_loader = DataLoader(eval_set, batch_size=batch_size)
 
+    elif name == 'REDDIT-BINARY':
+        dataset = TUDataset(os.path.join(path, 'TUDataset'), name=name, transform=ConstantX())
+        torch.manual_seed(1712)
+        dataset = dataset.shuffle()
+        eval_set = dataset[:eval_size] if eval_size else dataset[int(0.8 * len(dataset)):]
+        eval_loader = DataLoader(eval_set, batch_size=batch_size)
     elif name == 'ZINC':
         dataset = ZINC(root=os.path.join(path, 'ZINC'))
         torch.manual_seed(seed)
@@ -70,7 +78,7 @@ def eval_dataset(name, path='../data', eval_size=None, batch_size=32, seed=1309)
         task_type = 'node'
 
     elif name in ['CORNELL', 'WISCONSIN']:
-        dataset = WikipediaNetwork(root=os.path.join(path, 'WebKB'), name=name.lower(), geom_gcn_preprocess=True)
+        dataset = WebKB(root=os.path.join(path, 'WebKB'), name=name.lower(), geom_gcn_preprocess=True)
         eval_loader = dataset[0]
         task_type = 'node'
 
